@@ -1,0 +1,65 @@
+以下是开发者 Ace 与 AI 助手在开发「电商后台管理系统」过程中的对话记录：
+
+=== 对话片段 1 ===
+
+Ace: 我的 FastAPI 应用在 Docker 容器里启动后，所有请求都返回 404，但是本地跑完全正常。路由明明注册了，怎么回事？
+
+AI: 这个问题很常见。请检查一下你在 FastAPI 中是否使用了 `app.include_router()` 并且传入的 `prefix` 参数正确？另外，在 Docker 里你的 `uvicorn` 启动命令是否指定了正确的模块路径？
+
+Ace: 我试过了，prefix 是对的。uvicorn 命令是 `uvicorn app.main:app --host 0.0.0.0 --port 8000`。
+
+AI: 那可能是 Python 的模块搜索路径问题。Docker 里的 WORKDIR 和本地不同。请检查你的 Dockerfile 中 WORKDIR 设置，以及在 include_router 时用的是相对导入还是绝对导入。建议统一使用绝对导入，并在 Dockerfile 中设置 `ENV PYTHONPATH=/app`。
+
+Ace: 加了 PYTHONPATH 环境变量之后确实好了。原来是容器里 Python 找不到模块，但报错被吞了。
+
+=== 对话片段 2 ===
+
+Ace: 我的 SQLAlchemy 查询越来越慢了，一个简单的联表查询要 3 秒。users 表大概 50 万行，orders 表 200 万行。我想加索引但不知道加在哪个字段上。
+
+AI: 先用 EXPLAIN 看一下查询计划。你的查询是什么样的？
+
+Ace: 大概是 `db.query(User).join(Order).filter(Order.status == 'pending').all()`。
+
+AI: 问题在于 `Order.status` 字段没有索引，全表扫描了 200 万行。建议：
+1. 在 `orders.status` 上加 BTREE 索引
+2. 在 `orders.user_id` 上加索引（JOIN 条件）
+3. 如果经常按时间范围查询，再加上 `orders.created_at` 索引
+
+Ace: 加了 status 索引后降到 0.1 秒了。但我想知道还有什么通用的 SQLAlchemy 优化技巧？
+
+AI: 几个常用技巧：
+1. 使用 `joinedload()` 预加载关联对象，避免 N+1 查询
+2. 只 SELECT 需要的字段：`db.query(User.name, User.email)`
+3. 对只读查询使用 `.execution_options(read_only=True)` 降低事务开销
+
+Ace: 试了 joinedload，N+1 问题解决了，响应时间又降了一半。谢谢！
+
+=== 对话片段 3 ===
+
+Ace: 我现在纠结一个架构决策。项目目前是 FastAPI 单体应用，但团队在讨论要不要拆成微服务。我们才 3 个后端开发者，业务量也没那么大。
+
+AI: 以你们现在的团队规模（3 人）和业务量，拆微服务大概率是过早优化。给你一个判断框架：
+1. 单体应用在 2000 QPS 以下通常没有性能瓶颈
+2. 微服务的主要收益是团队解耦，不是性能。3 人团队不存在团队解耦的需求
+3. 微服务会引入网络延迟、分布式事务、运维复杂度等额外成本
+
+建议保持单体架构，但做好模块化：把不同业务域拆成独立的 Python 包，保持清晰的接口边界。将来业务增长需要拆分时，模块化代码迁移到独立服务的成本很低。
+
+Ace: 这个思路很清晰。我们决定保持单体，先把模块边界整理清楚。
+
+=== 对话片段 4 ===
+
+Ace: 我在配 Nginx 反向代理到 FastAPI 时，WebSocket 连接一直失败。HTTP 请求正常，但 WebSocket 握手就报 400 错误。
+
+AI: Nginx 默认配置不支持 WebSocket 升级。你需要在 location 块里显式加上这两行：
+```
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+```
+同时确保 `proxy_read_timeout` 足够大（WebSocket 是长连接，默认 60s 会断）。
+
+Ace: 加了这两行之后还是不行。
+
+AI: 检查一下你的 Nginx 版本。1.3.13 以上才支持 WebSocket。另外确认 `proxy_pass` 后面是否用了 `http://` 而非 `ws://`（Nginx 层面始终用 http:// 即可，不需要 ws://）。
+
+Ace: 原来是 proxy_pass 用了 ws:// 前缀导致的问题，改成 http:// 就好了。Nginx 文档里这块写得很模糊。
