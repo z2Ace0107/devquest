@@ -16,6 +16,9 @@ import os
 import re
 from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -25,7 +28,7 @@ from backend.models import Project, Problem
 # ── DeepSeek API 配置 ──────────────────────────────────────────
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "your-deepseek-api-key")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
 # ── 系统提示词 ──────────────────────────────────────────────────
 SYSTEM_PROMPT = """你是一个资深技术复盘分析师。你的任务是从一段 AI 编程对话记录中，

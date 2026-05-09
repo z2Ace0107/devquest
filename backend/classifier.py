@@ -12,6 +12,9 @@ DevQuest Log — 技术标签自动分类
 import os
 from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -21,7 +24,7 @@ from backend.models import Problem
 # ── DeepSeek API 配置 ──────────────────────────────────────────
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "your-deepseek-api-key")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
 # ── 已知技术栈词表（用于标准化）─────────────────────────────────
 KNOWN_TECH = {
