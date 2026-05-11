@@ -11,7 +11,7 @@ DevQuest Log — 数据库初始化与连接管理
 import os
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 # ── 数据库文件路径 ────────────────────────────────────────────
@@ -48,11 +48,18 @@ Base = declarative_base()
 def init_db():
     """
     根据 models.py 中定义的所有 ORM 模型，自动创建数据库表。
-    仅在表不存在时创建（不会覆盖已有数据）。
+    仅在表不存在时创建（不会覆盖已有数据），同时创建 FTS5 全文索引。
     """
-    # 先导入 models，确保所有模型类被注册到 Base.metadata
     from backend import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
+
+    # 创建 FTS5 全文索引虚拟表（用于双通道混合检索的关键词通道）
+    with engine.connect() as conn:
+        conn.execute(text(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS problems_fts "
+            "USING fts5(title, description, solution)"
+        ))
+        conn.commit()
 
 
 # ── 依赖注入工具（供 FastAPI 路由使用）────────────────────────

@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-DevQuest Log — ChromaDB 向量搜索模块
+DevQuest Log — 双通道混合检索模块
 
-封装 ChromaDB 的索引构建与语义搜索逻辑：
-- 新增问题时自动同步向量索引
-- 支持语义搜索 + 技术栈过滤
-- /rebuild-index 全量重建索引
+双通道检索架构:
+- 向量通道: ChromaDB 语义检索（余弦距离）
+- 关键词通道: SQLite FTS5 全文索引（BM25 排序）
+- RRF 融合: Reciprocal Rank Fusion (k=60)
 
-Embedding 使用阿里百炼 text-embedding-v3（OpenAI 兼容格式）。
-存储内容：问题标题 + 描述 + 解决方案的拼接文本
-元数据：id / project_id / title / tech_stack / priority_score
+支持:
+- 按项目范围裁剪（知识域收缩）
+- _debug 影子观测：返回每通道原始排名与融合权重
 """
 
 import os
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
@@ -22,8 +23,8 @@ load_dotenv()
 import chromadb
 from openai import OpenAI
 
-from backend.database import SessionLocal
-from backend.models import Problem
+from backend.database import SessionLocal, engine
+from backend.models import Problem, Project
 
 # ── 阿里百炼 Embedding 配置 ────────────────────────────────────
 EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
@@ -39,6 +40,7 @@ CHROMA_DIR = BASE_DIR / "data" / "chroma_db"
 CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
 COLLECTION_NAME = "problems"
+RRF_K = 60  # RRF 融合常数
 
 # ── 全局客户端（延迟初始化）─────────────────────────────────────
 _client: Optional[chromadb.PersistentClient] = None
@@ -47,7 +49,6 @@ _collection: Optional[chromadb.Collection] = None
 
 
 def _get_embed_client() -> OpenAI:
-    """获取 OpenAI 兼容的 Embedding 客户端。"""
     global _embed_client
     if _embed_client is None:
         _embed_client = OpenAI(
@@ -58,7 +59,6 @@ def _get_embed_client() -> OpenAI:
 
 
 def _get_collection() -> chromadb.Collection:
-    """获取或创建 ChromaDB collection。"""
     global _client, _collection
     if _collection is None:
         _client = chromadb.PersistentClient(path=str(CHROMA_DIR))
@@ -70,24 +70,64 @@ def _get_collection() -> chromadb.Collection:
 
 
 def _embed(text: str) -> list[float]:
-    """将单段文本向量化。"""
     client = _get_embed_client()
     response = client.embeddings.create(model=EMBEDDING_MODEL, input=text)
     return response.data[0].embedding
 
 
 def _embed_batch(texts: list[str]) -> list[list[float]]:
-    """批量向量化。"""
     client = _get_embed_client()
     response = client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
-    # 按 input 顺序返回
     return [d.embedding for d in response.data]
+
+
+# ── FTS5 全文索引操作 ──────────────────────────────────────────
+
+def _sync_fts(problem_id: int, title: str, description: str, solution: str):
+    """同步单条问题到 FTS5 全文索引（upsert 语义）。"""
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        # 先删后插，实现 upsert
+        conn.execute(text("DELETE FROM problems_fts WHERE rowid = :id"), {"id": problem_id})
+        conn.execute(
+            text("INSERT INTO problems_fts(rowid, title, description, solution) "
+                 "VALUES (:id, :title, :desc, :sol)"),
+            {"id": problem_id, "title": title, "desc": description, "sol": solution},
+        )
+        conn.commit()
+
+
+def _delete_fts(problem_id: int):
+    """从 FTS5 索引中删除指定问题。"""
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        conn.execute(text("DELETE FROM problems_fts WHERE rowid = :id"), {"id": problem_id})
+        conn.commit()
+
+
+def _rebuild_fts():
+    """从 problems 表全量重建 FTS5 全文索引。"""
+    db = SessionLocal()
+    try:
+        problems = db.query(Problem).all()
+        with engine.connect() as conn:
+            from sqlalchemy import text
+            conn.execute(text("DELETE FROM problems_fts"))
+            for p in problems:
+                conn.execute(
+                    text("INSERT INTO problems_fts(rowid, title, description, solution) "
+                         "VALUES (:id, :title, :desc, :sol)"),
+                    {"id": p.id, "title": p.title or "", "desc": p.description or "",
+                     "sol": p.solution or ""},
+                )
+            conn.commit()
+    finally:
+        db.close()
 
 
 # ── 文档拼接 ───────────────────────────────────────────────────
 
 def _build_document(problem: Problem) -> str:
-    """将问题拼接为待向量化的文本。"""
     parts = []
     if problem.title:
         parts.append(f"问题：{problem.title}")
@@ -102,13 +142,7 @@ def _build_document(problem: Problem) -> str:
 
 def add_to_index(problem_id: int) -> bool:
     """
-    将单个问题加入向量索引。
-
-    参数:
-        problem_id: 问题数据库 ID
-
-    返回:
-        bool: 是否成功
+    将单个问题同时加入向量索引和 FTS5 全文索引。
     """
     db = SessionLocal()
     try:
@@ -120,6 +154,7 @@ def add_to_index(problem_id: int) -> bool:
         if not doc.strip():
             return False
 
+        # 向量索引
         vector = _embed(doc)
         collection = _get_collection()
         collection.upsert(
@@ -134,6 +169,11 @@ def add_to_index(problem_id: int) -> bool:
                 "priority_score": problem.priority_score or 5,
             }],
         )
+
+        # FTS5 全文索引
+        _sync_fts(problem.id, problem.title or "", problem.description or "",
+                  problem.solution or "")
+
         return True
     except Exception:
         return False
@@ -142,7 +182,6 @@ def add_to_index(problem_id: int) -> bool:
 
 
 def add_to_index_batch(problem_ids: list[int]) -> int:
-    """批量加入向量索引，返回成功数量。"""
     count = 0
     for pid in problem_ids:
         if add_to_index(pid):
@@ -151,46 +190,92 @@ def add_to_index_batch(problem_ids: list[int]) -> int:
 
 
 def delete_from_index(problem_id: int) -> bool:
-    """从向量索引中删除指定问题。"""
     try:
         collection = _get_collection()
         collection.delete(ids=[str(problem_id)])
+        _delete_fts(problem_id)
         return True
     except Exception:
         return False
 
 
-# ── 语义搜索 ───────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+# 双通道混合检索 + RRF 融合
+# ══════════════════════════════════════════════════════════════════
 
 def search(
     query_text: str,
     k: int = 5,
     tech_filter: Optional[str] = None,
-) -> list[dict]:
+    project_name: Optional[str] = None,
+) -> dict:
     """
-    语义搜索相似问题。
+    双通道混合检索：向量语义 + FTS5 关键词 → RRF 融合排序。
 
     参数:
-        query_text: 查询文本（自然语言描述）
-        k: 返回结果数量，默认 5
-        tech_filter: 可选，按技术栈关键词过滤
+        query_text: 查询文本
+        k: 返回数量
+        tech_filter: 技术栈过滤关键词
+        project_name: 可选，限定搜索范围到指定项目
 
     返回:
-        list[dict]: 搜索结果列表，每项包含:
-            - problem_id / title / tech_stack / priority_score
-            - document: 问题完整文本
-            - distance: 向量距离（越小越相似）
+        dict: {"results": [...], "_debug": {...}}
     """
+    # ── 确定项目 ID（知识域收缩）─────────────────────────────
+    project_id = None
+    if project_name:
+        db = SessionLocal()
+        try:
+            proj = db.query(Project).filter_by(name=project_name).first()
+            if proj:
+                project_id = proj.id
+        finally:
+            db.close()
+
+    # ── 通道一: 向量检索 ─────────────────────────────────────
+    vector_results = _vector_search(query_text, k * 3, tech_filter, project_id)
+
+    # ── 通道二: FTS5 关键词检索 ──────────────────────────────
+    keyword_results = _keyword_search(query_text, k * 3, tech_filter, project_id)
+
+    # ── RRF 融合 ─────────────────────────────────────────────
+    fused = _rrf_fusion(vector_results, keyword_results, k, RRF_K)
+
+    # ── 补全文档内容 ─────────────────────────────────────────
+    results = _enrich_results(fused)
+
+    return {
+        "results": results,
+        "_debug": {
+            "vector": vector_results[:k],
+            "keyword": keyword_results[:k],
+            "fused": fused,
+            "rrf_k": RRF_K,
+        },
+    }
+
+
+def _vector_search(
+    query_text: str,
+    fetch_k: int,
+    tech_filter: Optional[str] = None,
+    project_id: Optional[int] = None,
+) -> list[dict]:
+    """向量通道：ChromaDB 语义检索。"""
     collection = _get_collection()
     query_vector = _embed(query_text)
 
-    # 有过滤条件时多取一些，避免过滤后不够 k 条
-    fetch_k = k * 3 if tech_filter else k
+    # 构建 ChromaDB where 条件
+    where = None
+    if project_id is not None:
+        where = {"project_id": project_id}
+    # 注意: ChromaDB 1.x 不支持 AND 组合 where，technology filter 在 Python 侧处理
 
     results = collection.query(
         query_embeddings=[query_vector],
         n_results=fetch_k,
-        include=["documents", "metadatas", "distances"],
+        where=where,
+        include=["metadatas", "distances"],
     )
 
     output = []
@@ -198,7 +283,6 @@ def search(
         return output
 
     ids = results["ids"][0]
-    docs = results["documents"][0] if results["documents"] else []
     metas = results["metadatas"][0] if results["metadatas"] else []
     distances = results["distances"][0] if results["distances"] else []
 
@@ -207,38 +291,214 @@ def search(
         # Python 侧按技术栈过滤
         if tech_filter and tech_filter.lower() not in item_tech.lower():
             continue
-        item = {
+        output.append({
             "problem_id": int(pid),
             "title": metas[i].get("title", "") if i < len(metas) else "",
             "tech_stack": item_tech,
             "priority_score": metas[i].get("priority_score", 0) if i < len(metas) else 0,
-            "document": docs[i] if i < len(docs) else "",
             "distance": distances[i] if i < len(distances) else 0.0,
-        }
-        output.append(item)
+            "source": "vector",
+        })
+    return output
 
-    output.sort(key=lambda x: x["distance"])
-    return output[:k]
+
+def _keyword_search(
+    query_text: str,
+    fetch_k: int,
+    tech_filter: Optional[str] = None,
+    project_id: Optional[int] = None,
+) -> list[dict]:
+    """关键词通道：FTS5（英文/数字） + SQL LIKE（中文兜底）。"""
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        fts_query = _build_fts_query(query_text)
+        rows = []
+
+        if fts_query != "*":
+            # 有英文/数字 token → 走 FTS5
+            rows = db.execute(
+                text(
+                    "SELECT f.rowid, p.title, p.tech_stack, p.priority_score, "
+                    "       0.0 - f.rank AS score "
+                    "FROM problems_fts f "
+                    "JOIN problems p ON f.rowid = p.id "
+                    "WHERE problems_fts MATCH :query "
+                    + ("AND p.project_id = :proj_id " if project_id is not None else "")
+                    + "ORDER BY f.rank "
+                    "LIMIT :limit"
+                ),
+                {
+                    "query": fts_query,
+                    **({"proj_id": project_id} if project_id is not None else {}),
+                    "limit": fetch_k,
+                },
+            ).fetchall()
+
+        # 中文词 → LIKE 兜底（与 FTS5 结果合并）
+        cn_tokens = [t for t in query_text.split() if len(t) > 1 and not t.isascii()]
+        if cn_tokens:
+            like_conds = " OR ".join(
+                "(p.title LIKE :t{i} OR p.description LIKE :t{i} OR p.solution LIKE :t{i})"
+                .format(i=i)
+                for i in range(len(cn_tokens))
+            )
+            params = {}
+            for i, t in enumerate(cn_tokens):
+                params[f"t{i}"] = f"%{t}%"
+
+            sql = (
+                "SELECT p.id AS rowid, p.title, p.tech_stack, p.priority_score, "
+                "       1.0 AS score "
+                "FROM problems p "
+                "WHERE (" + like_conds + ")"
+                + ("AND p.project_id = :proj_id " if project_id is not None else "")
+                + "LIMIT :limit"
+            )
+            params["limit"] = fetch_k
+            if project_id is not None:
+                params["proj_id"] = project_id
+
+            like_rows = db.execute(text(sql), params).fetchall()
+            # 去重合并：按 rowid 去重，取最高分
+            seen = {r.rowid for r in rows}
+            for lr in like_rows:
+                if lr.rowid not in seen:
+                    rows.append(lr)
+                    seen.add(lr.rowid)
+
+        # 按 score 降序排列（FTS5 的 -rank 为负值越小越好，LIKE 的 1.0 优先）
+        rows = sorted(rows, key=lambda r: r.score, reverse=True)[:fetch_k]
+    finally:
+        db.close()
+
+    output = []
+    for i, row in enumerate(rows):
+        item_tech = row.tech_stack or ""
+        if tech_filter and tech_filter.lower() not in item_tech.lower():
+            continue
+        output.append({
+            "problem_id": row.rowid,
+            "title": row.title or "",
+            "tech_stack": item_tech,
+            "priority_score": row.priority_score or 5,
+            "bm25_rank": i + 1,  # 排名，越小越好
+            "source": "keyword",
+        })
+    return output
+
+
+def _build_fts_query(query_text: str) -> str:
+    """
+    将自然语言查询转为 FTS5 查询语法。
+    FTS5 默认分词器不支持中文，仅用英文/数字 token 做前缀匹配。
+    """
+    tokens = [t.strip() for t in query_text.split() if len(t.strip()) > 1]
+    if not tokens:
+        return "*"
+
+    ascii_tokens = [f'"{t}"*' for t in tokens[:10] if t.isascii()]
+    if not ascii_tokens:
+        return "*"  # 纯中文查询，FTS5 无法处理，走 LIKE 兜底
+    return " OR ".join(ascii_tokens)
+
+
+def _rrf_fusion(
+    vector_results: list[dict],
+    keyword_results: list[dict],
+    k: int,
+    rrf_k: int = 60,
+) -> list[dict]:
+    """
+    RRF (Reciprocal Rank Fusion) 融合两路检索结果。
+
+    公式: RRF(d) = Σ 1 / (k + rank_i(d))
+    分数越高越相关。
+    """
+    scores: dict[int, float] = defaultdict(float)
+    doc_info: dict[int, dict] = {}
+
+    # 向量通道：rank 1 = 距离最小
+    for rank, item in enumerate(vector_results, start=1):
+        pid = item["problem_id"]
+        scores[pid] += 1.0 / (rrf_k + rank)
+        if pid not in doc_info:
+            doc_info[pid] = item
+
+    # 关键词通道：rank 1 = BM25 分数最高（f.rank 最小）
+    for rank, item in enumerate(keyword_results, start=1):
+        pid = item["problem_id"]
+        scores[pid] += 1.0 / (rrf_k + rank)
+        if pid not in doc_info:
+            doc_info[pid] = item
+
+    # 按 RRF 分数降序排列
+    sorted_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:k]
+
+    result = []
+    for pid in sorted_ids:
+        info = doc_info[pid]
+        result.append({
+            "problem_id": pid,
+            "title": info.get("title", ""),
+            "tech_stack": info.get("tech_stack", ""),
+            "priority_score": info.get("priority_score", 5),
+            "rrf_score": round(scores[pid], 6),
+            "vector_distance": info.get("distance"),
+            "bm25_rank": info.get("bm25_rank"),
+            "sources": _get_sources(pid, vector_results, keyword_results),
+        })
+    return result
+
+
+def _get_sources(pid: int, vector: list[dict], keyword: list[dict]) -> list[str]:
+    """判断结果来自哪些通道。"""
+    srcs = []
+    for item in vector:
+        if item["problem_id"] == pid:
+            srcs.append("vector")
+            break
+    for item in keyword:
+        if item["problem_id"] == pid:
+            srcs.append("keyword")
+            break
+    return srcs
+
+
+def _enrich_results(fused: list[dict]) -> list[dict]:
+    """为融合结果补全 document 字段（用于前端展示）。"""
+    if not fused:
+        return []
+    db = SessionLocal()
+    try:
+        ids = [item["problem_id"] for item in fused]
+        problems = db.query(Problem).filter(Problem.id.in_(ids)).all()
+        id_to_doc = {p.id: _build_document(p) for p in problems}
+
+        for item in fused:
+            pid = item["problem_id"]
+            item["document"] = id_to_doc.get(pid, "")
+            # 将 RRF 分数映射为 0-1 距离，兼容前端 (1 - distance) 计算
+            # RRF 通常 0.01-0.05，映射到 0-0.5 的"距离"
+            item["distance"] = round(1.0 / (1.0 + item["rrf_score"] * 100), 4)
+    finally:
+        db.close()
+    return fused
 
 
 # ── 全量重建 ───────────────────────────────────────────────────
 
 def rebuild_index() -> dict:
-    """
-    从 SQLite 全量重建 ChromaDB 向量索引。
-
-    返回:
-        dict: {"indexed": N, "errors": M}
-    """
+    """全量重建向量索引和 FTS5 全文索引。"""
     db = SessionLocal()
     try:
         problems = db.query(Problem).all()
         if not problems:
             return {"indexed": 0, "errors": 0}
 
+        # 向量索引重建
         collection = _get_collection()
-
-        # 清空现有索引
         try:
             existing_ids = collection.get()["ids"]
             if existing_ids:
@@ -246,7 +506,6 @@ def rebuild_index() -> dict:
         except Exception:
             pass
 
-        # 构建文档并批量向量化
         docs = []
         valid_problems = []
         for problem in problems:
@@ -255,30 +514,23 @@ def rebuild_index() -> dict:
                 docs.append(doc)
                 valid_problems.append(problem)
 
-        if not docs:
-            return {"indexed": 0, "errors": len(problems)}
+        if docs:
+            vectors = _embed_batch(docs)
+            ids = []
+            metadatas = []
+            for problem in valid_problems:
+                ids.append(str(problem.id))
+                metadatas.append({
+                    "problem_id": problem.id,
+                    "project_id": problem.project_id or 0,
+                    "title": problem.title or "",
+                    "tech_stack": problem.tech_stack or "",
+                    "priority_score": problem.priority_score or 5,
+                })
+            collection.add(ids=ids, embeddings=vectors, documents=docs, metadatas=metadatas)
 
-        # 批量 Embedding
-        vectors = _embed_batch(docs)
-
-        ids = []
-        metadatas = []
-        for problem in valid_problems:
-            ids.append(str(problem.id))
-            metadatas.append({
-                "problem_id": problem.id,
-                "project_id": problem.project_id or 0,
-                "title": problem.title or "",
-                "tech_stack": problem.tech_stack or "",
-                "priority_score": problem.priority_score or 5,
-            })
-
-        collection.add(
-            ids=ids,
-            embeddings=vectors,
-            documents=docs,
-            metadatas=metadatas,
-        )
+        # FTS5 全文索引重建
+        _rebuild_fts()
 
         errors = len(problems) - len(ids)
         return {"indexed": len(ids), "errors": errors}
@@ -286,13 +538,22 @@ def rebuild_index() -> dict:
         db.close()
 
 
-# ── 统计 ────────────────────────────────────────────────────────
-
 def index_stats() -> dict:
-    """返回当前向量索引的统计信息。"""
     try:
         collection = _get_collection()
-        count = collection.count()
-        return {"collection": COLLECTION_NAME, "documents": count}
+        v_count = collection.count()
+        db = SessionLocal()
+        try:
+            from sqlalchemy import text
+            fts_count = db.execute(text(
+                "SELECT COUNT(*) FROM problems_fts"
+            )).scalar()
+        finally:
+            db.close()
+        return {
+            "collection": COLLECTION_NAME,
+            "vector_docs": v_count,
+            "fts_docs": fts_count or 0,
+        }
     except Exception:
-        return {"collection": COLLECTION_NAME, "documents": 0}
+        return {"collection": COLLECTION_NAME, "vector_docs": 0, "fts_docs": 0}

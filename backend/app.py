@@ -357,18 +357,23 @@ def api_search(
     q: str = Query(..., description="查询文本（自然语言描述）"),
     k: int = Query(5, ge=1, le=50, description="返回数量"),
     tech: Optional[str] = Query(None, description="按技术栈过滤"),
+    project: Optional[str] = Query(None, description="限定项目范围（知识域收缩）"),
 ):
     """
-    语义搜索历史问题。
-    参数 q 为查询文本，k 控制返回数量，tech 可选过滤技术栈。
+    双通道混合搜索（向量 + FTS5 关键词 → RRF 融合）。
+    参数 q 为查询文本，k 控制返回数量，tech 可选过滤技术栈，
+    project 可选限定项目范围。
     """
     try:
-        results = vector_search.search(query_text=q, k=k, tech_filter=tech)
+        data = vector_search.search(
+            query_text=q, k=k, tech_filter=tech, project_name=project,
+        )
         return {
             "query": q,
-            "filters": {"tech": tech},
-            "count": len(results),
-            "results": results,
+            "filters": {"tech": tech, "project": project},
+            "count": len(data["results"]),
+            "results": data["results"],
+            "_debug": data.get("_debug"),
         }
     except Exception as e:
         raise HTTPException(
