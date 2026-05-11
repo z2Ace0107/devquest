@@ -66,6 +66,21 @@ def api_put(path: str, body: dict = None) -> dict:
         return {}
 
 
+# ── 图表工具函数 ────────────────────────────────────────────────
+
+def _render_bar_chart(df, x: str, y: str):
+    """渲染柱状图，优先使用 st.bar_chart，失败降级 plotly。"""
+    try:
+        st.bar_chart(df.set_index(x)[y])
+    except Exception:
+        try:
+            import plotly.express as px
+            fig = px.bar(df, x=x, y=y, template="plotly_dark")
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception:
+            st.dataframe(df)
+
+
 # ══════════════════════════════════════════════════════════════════
 # 侧边栏导航
 # ══════════════════════════════════════════════════════════════════
@@ -114,10 +129,7 @@ if page == "仪表盘":
             df_type = pd.DataFrame(
                 data["by_type"].items(), columns=["类型", "数量"]
             )
-            try:
-                st.bar_chart(df_type.set_index("类型"))
-            except Exception:
-                st.dataframe(df_type)
+            _render_bar_chart(df_type, x="类型", y="数量")
 
     with col_right:
         st.subheader("按分数段分布")
@@ -125,18 +137,12 @@ if page == "仪表盘":
             df_score = pd.DataFrame(
                 data["by_score_range"].items(), columns=["分数段", "数量"]
             )
-            try:
-                st.bar_chart(df_score.set_index("分数段"))
-            except Exception:
-                st.dataframe(df_score)
+            _render_bar_chart(df_score, x="分数段", y="数量")
 
     st.subheader("热门技术栈 Top 10")
     if data.get("top_tech"):
         df_tech = pd.DataFrame(data["top_tech"])
-        try:
-            st.bar_chart(df_tech.set_index("tech"))
-        except Exception:
-            st.dataframe(df_tech)
+        _render_bar_chart(df_tech, x="tech", y="count")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -230,7 +236,7 @@ elif page == "问题列表":
             f"— 评分 {p['priority_score']}",
             expanded=(i == 0),
         ):
-            tab1, tab2, tab3 = st.tabs(["详情", "解决方案", "修改评分"])
+            tab1, tab2, tab3 = st.tabs(["详情 & 解决方案", "STAR 故事", "修改评分"])
 
             with tab1:
                 st.markdown(f"**描述**\n{p['description'] or '无'}")
@@ -244,12 +250,15 @@ elif page == "问题列表":
                     except (json.JSONDecodeError, TypeError):
                         st.markdown(f"**尝试过的方案**\n{p['attempts']}")
 
+                # 解决方案直接展示在主视图，无需切换 Tab
+                with st.container(border=True):
+                    st.markdown("**💡 解决方案**")
+                    st.markdown(p.get("solution", "无"))
+
                 st.markdown(f"**技术栈**: `{p['tech_stack']}`")
                 st.caption(f"创建时间: {p['created_at']}")
 
             with tab2:
-                st.markdown(p.get("solution", "无"))
-
                 if not p.get("star_story"):
                     if st.button(f"生成 STAR 故事", key=f"star_{p['id']}"):
                         with st.spinner("生成中..."):
@@ -274,10 +283,13 @@ elif page == "问题列表":
                     key=f"score_{p['id']}",
                 )
                 if new_score != p["priority_score"]:
-                    if st.button("保存评分", key=f"save_{p['id']}"):
-                        api_put(f"/problem/{p['id']}/score", {"priority_score": new_score})
-                        st.success("已更新")
-                        st.rerun()
+                    if st.button("保存评分", key=f"save_{p['id']}", type="primary"):
+                        result = api_put(f"/problem/{p['id']}/score", {"priority_score": new_score})
+                        if result.get("new_score"):
+                            st.toast(f"✅ 评分已更新: {result['old_score']} → {result['new_score']}")
+                            st.rerun()
+                        else:
+                            st.error("保存失败，请重试")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -310,7 +322,20 @@ elif page == "经验搜索":
             st.success(f"找到 {data['count']} 条相关经验")
 
             for r in data["results"]:
-                similarity = max(0, int((1 - r["distance"]) * 100))
+                # 混合匹配度：语义分(0-100) + 关键词加分
+                distance = r["distance"]
+                semantic_score = max(0, round((1 - distance) * 100))
+                # 查询词命中标题/技术栈时加分
+                keyword_boost = 0
+                ql = query.lower()
+                for qw in ql.split():
+                    if len(qw) <= 1:
+                        continue
+                    if qw in (r.get("title", "") or "").lower():
+                        keyword_boost += 15
+                    if qw in (r.get("tech_stack", "") or "").lower():
+                        keyword_boost += 10
+                similarity = min(100, semantic_score + keyword_boost)
                 score_color = "🟢" if r["priority_score"] >= 7 else ("🟡" if r["priority_score"] >= 4 else "🔴")
 
                 with st.container(border=True):
