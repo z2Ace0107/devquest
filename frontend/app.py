@@ -114,7 +114,10 @@ if page == "仪表盘":
             df_type = pd.DataFrame(
                 data["by_type"].items(), columns=["类型", "数量"]
             )
-            st.bar_chart(df_type.set_index("类型"))
+            try:
+                st.bar_chart(df_type.set_index("类型"))
+            except Exception:
+                st.dataframe(df_type)
 
     with col_right:
         st.subheader("按分数段分布")
@@ -122,12 +125,18 @@ if page == "仪表盘":
             df_score = pd.DataFrame(
                 data["by_score_range"].items(), columns=["分数段", "数量"]
             )
-            st.bar_chart(df_score.set_index("分数段"))
+            try:
+                st.bar_chart(df_score.set_index("分数段"))
+            except Exception:
+                st.dataframe(df_score)
 
     st.subheader("热门技术栈 Top 10")
     if data.get("top_tech"):
         df_tech = pd.DataFrame(data["top_tech"])
-        st.bar_chart(df_tech.set_index("tech"))
+        try:
+            st.bar_chart(df_tech.set_index("tech"))
+        except Exception:
+            st.dataframe(df_tech)
 
 
 # ══════════════════════════════════════════════════════════════════

@@ -7,6 +7,7 @@ uvicorn==0.34.0
 
 # 前端
 streamlit==1.41.1
+altair==5.2.0
 
 # AI 层
 langchain==0.3.13
