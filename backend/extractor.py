@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-DevQuest Log — 问题提取引擎
+DevQuest — 问题提取引擎
 
 使用 LangChain + DeepSeek API（兼容 OpenAI 格式）分析 AI 编程对话，
 从中提取结构化技术问题，并存入数据库。
@@ -34,7 +34,9 @@ DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 SYSTEM_PROMPT = """你是一个资深技术复盘分析师。你的任务是从一段 AI 编程对话记录中，
 识别出所有开发者遇到的技术问题，并提取结构化信息。
 
-对于对话中每个独立的技术问题，你必须输出以下字段：
+对于对话中每个独立的技术问题，你必须输出以下字段。
+
+**重要：如何判断"独立问题"**——只要根因不同或解决方案不同，就应拆分为独立问题。即使多个问题涉及同一个组件、同一个报错信息，甚至是同一段对话中连续讨论的，也请分别提取。宁可拆分过细，不要合并。例如：同一个 Table 组件的"渲染慢"和"hover 闪烁"是两个问题（根因不同），应输出两条记录。
 - title: 问题标题（一句话总结，不超过 30 字）
 - description: 问题详细描述，包含上下文背景（100-300 字）
 - attempts: 尝试过的方案列表，每个方案用一句话描述。如果对话中提到了多次尝试，请全部列出
@@ -166,7 +168,8 @@ def _save_to_db(
     project_name: str,
 ) -> list[dict]:
     """
-    将提取的问题数据写入数据库。
+    将提取的问题数据写入数据库。入库前进行语义去重：
+    新问题与已有问题库中最近匹配的余弦距离 < 0.125 时，合并而非新增。
 
     参数:
         problems_data: LLM 解析出的问题列表
@@ -176,6 +179,8 @@ def _save_to_db(
     返回:
         list[dict]: 入库后的问题字典列表（含自增 id）
     """
+    from backend import vector_search
+
     db = SessionLocal()
     try:
         # 获取或创建项目
@@ -185,12 +190,29 @@ def _save_to_db(
             db.add(project)
             db.flush()  # 获取 project.id
 
+        merged_count = 0
         result = []
         for item in problems_data:
+            title = item.get("title", "")
+            description = item.get("description", "")
+
+            # ── 语义去重检查 ─────────────────────────────────
+            dup_id, dup_dist = vector_search.search_similar(title, description)
+
+            if dup_id is not None and dup_dist < vector_search.DEDUP_THRESHOLD:
+                # 合并到已有问题
+                existing = db.query(Problem).filter_by(id=dup_id).first()
+                if existing:
+                    _merge_problem(existing, item, raw_conversation)
+                    result.append(existing.to_dict())
+                    merged_count += 1
+                    continue
+
+            # 新建问题
             problem = Problem(
                 project_id=project.id,
-                title=item.get("title", ""),
-                description=item.get("description", ""),
+                title=title,
+                description=description,
                 attempts=json.dumps(
                     item.get("attempts", []), ensure_ascii=False
                 ),
@@ -204,12 +226,69 @@ def _save_to_db(
             result.append(problem.to_dict())
 
         db.commit()
+
+        # 写入日志（静默，不打断返回）
+        if merged_count > 0:
+            import logging
+            logging.getLogger(__name__).info(
+                f"去重: {merged_count}/{len(problems_data)} 个问题合并到已有记录"
+            )
+
         return result
     except Exception:
         db.rollback()
         raise
     finally:
         db.close()
+
+
+def _merge_problem(existing: Problem, new_item: dict, raw_conversation: str):
+    """
+    将新提取的问题内容合并到已有问题记录。
+
+    合并策略:
+    - attempts: 追加新的尝试方案，去重
+    - solution: 如果新方案更长更详细，替换旧方案
+    - tech_stack: 合并技术栈标签
+    - raw_conversation: 追加新的对话片段
+    - title/description/problem_type: 保留原有（避免覆盖人工修正）
+    """
+    import json as _json
+
+    # 合并 attempts
+    try:
+        old_attempts = _json.loads(existing.attempts or "[]")
+    except (_json.JSONDecodeError, TypeError):
+        old_attempts = []
+
+    new_attempts = new_item.get("attempts", [])
+    if isinstance(new_attempts, str):
+        try:
+            new_attempts = _json.loads(new_attempts)
+        except (_json.JSONDecodeError, TypeError):
+            new_attempts = [new_attempts] if new_attempts else []
+
+    seen = set(old_attempts)
+    for a in new_attempts:
+        if a and a not in seen:
+            old_attempts.append(a)
+            seen.add(a)
+    existing.attempts = _json.dumps(old_attempts, ensure_ascii=False)
+
+    # 合并 solution：新方案更长时替换
+    new_sol = new_item.get("solution", "")
+    old_sol = existing.solution or ""
+    if len(new_sol) > len(old_sol):
+        existing.solution = new_sol
+
+    # 合并 tech_stack：去重拼接
+    old_tech = set(t.strip() for t in (existing.tech_stack or "").split(",") if t.strip())
+    new_tech = set(t.strip() for t in new_item.get("tech_stack", "").split(",") if t.strip())
+    existing.tech_stack = ",".join(sorted(old_tech | new_tech))
+
+    # 追加原始对话
+    if raw_conversation and raw_conversation not in (existing.raw_conversation or ""):
+        existing.raw_conversation = (existing.raw_conversation or "") + "\n---\n" + raw_conversation
 
 
 # ── 便捷函数：从文件导入 ───────────────────────────────────────

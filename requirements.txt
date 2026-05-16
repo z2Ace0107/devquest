@@ -1,14 +1,8 @@
-# DevQuest Log — 开发者项目经验管理与智能复盘系统
-# MVP 依赖清单
+# DevQuest — 基于 MCP 协议的开发者"外脑" Agent
+# V1.2 依赖清单
 
-# Web 框架
-fastapi==0.115.6
-uvicorn==0.34.0
-
-# 前端
-streamlit==1.41.1
-altair==5.2.0
-plotly==5.24.1
+# MCP 协议
+mcp>=1.0.0
 
 # AI 层
 langchain==0.3.13

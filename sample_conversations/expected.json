@@ -1,0 +1,91 @@
+{
+  "mock_web_app_debug.txt": {
+    "project": "电商后台管理系统",
+    "expected_count": 4,
+    "expected_problems": [
+      {
+        "title_keywords": ["Docker", "FastAPI", "404", "路由"],
+        "problem_type": "环境配置",
+        "tech_stack_keywords": ["Docker", "Python", "FastAPI"]
+      },
+      {
+        "title_keywords": ["SQLAlchemy", "查询", "慢", "索引"],
+        "problem_type": "性能优化",
+        "tech_stack_keywords": ["Python", "SQLAlchemy"]
+      },
+      {
+        "title_keywords": ["单体", "微服务", "架构"],
+        "problem_type": "架构决策",
+        "tech_stack_keywords": ["Python", "FastAPI"]
+      },
+      {
+        "title_keywords": ["Nginx", "WebSocket", "400", "反向代理"],
+        "problem_type": "Bug",
+        "tech_stack_keywords": ["Nginx", "FastAPI", "WebSocket"]
+      }
+    ]
+  },
+  "react_table_bug.txt": {
+    "project": "数据看板前端",
+    "expected_count": 3,
+    "expected_problems": [
+      {
+        "title_keywords": ["React", "表格", "5000", "卡顿", "渲染"],
+        "problem_type": "性能优化",
+        "tech_stack_keywords": ["React", "Ant Design", "JavaScript"]
+      },
+      {
+        "title_keywords": ["hover", "闪烁", "重渲染", "React.memo"],
+        "problem_type": "Bug",
+        "tech_stack_keywords": ["React", "JavaScript"]
+      },
+      {
+        "title_keywords": ["虚拟滚动", "virtual", "Table", "DOM"],
+        "problem_type": "性能优化",
+        "tech_stack_keywords": ["React", "Ant Design"]
+      }
+    ]
+  },
+  "api_migration_issue.txt": {
+    "project": "用户中心 API 迁移",
+    "expected_count": 3,
+    "expected_problems": [
+      {
+        "title_keywords": ["REST", "GraphQL", "迁移", "平滑", "过渡"],
+        "problem_type": "架构决策",
+        "tech_stack_keywords": ["GraphQL", "Apollo", "REST"]
+      },
+      {
+        "title_keywords": ["snake_case", "camelCase", "字段名", "兼容"],
+        "problem_type": "架构决策",
+        "tech_stack_keywords": ["GraphQL", "Apollo", "API"]
+      },
+      {
+        "title_keywords": ["缓存", "Redis", "不一致", "双写", "数据"],
+        "problem_type": "Bug",
+        "tech_stack_keywords": ["Redis", "GraphQL", "REST", "DataLoader"]
+      }
+    ]
+  },
+  "cicd_deploy_issue.txt": {
+    "project": "微服务 CI/CD 流水线",
+    "expected_count": 3,
+    "expected_problems": [
+      {
+        "title_keywords": ["CI/CD", "GitHub Actions", "18分钟", "monorepo", "构建速度"],
+        "problem_type": "性能优化",
+        "tech_stack_keywords": ["GitHub Actions", "Docker", "CI/CD"]
+      },
+      {
+        "title_keywords": ["Docker", "构建", "cache", "pip", "Dockerfile"],
+        "problem_type": "性能优化",
+        "tech_stack_keywords": ["Docker", "Python", "BuildKit"]
+      },
+      {
+        "title_keywords": ["paths filter", "集成测试", "依赖", "monorepo", "条件构建"],
+        "problem_type": "环境配置",
+        "tech_stack_keywords": ["GitHub Actions", "CI/CD", "Monorepo"]
+      }
+    ]
+  }
+}

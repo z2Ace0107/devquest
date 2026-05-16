@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-DevQuest Log — 双通道混合检索模块
+DevQuest — 双通道混合检索模块
 
 双通道检索架构:
 - 向量通道: ChromaDB 语义检索（余弦距离）
@@ -17,8 +17,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
+# ── 项目根目录 ────────────────────────────────────────────────
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(BASE_DIR / ".env")
 
 import chromadb
 from openai import OpenAI
@@ -35,7 +38,6 @@ EMBEDDING_BASE_URL = os.getenv(
 )
 
 # ── ChromaDB 持久化路径 ────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent.parent
 CHROMA_DIR = BASE_DIR / "data" / "chroma_db"
 CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -200,6 +202,82 @@ def delete_from_index(problem_id: int) -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════
+# 隐式反馈
+# ══════════════════════════════════════════════════════════════════
+
+def _load_usage_boosts() -> dict[int, int]:
+    """加载所有问题的使用次数，用于搜索排序 boost。"""
+    db = SessionLocal()
+    try:
+        from sqlalchemy import text
+        rows = db.execute(text(
+            "SELECT id, usage_count FROM problems WHERE usage_count > 0"
+        )).fetchall()
+        return {row[0]: row[1] for row in rows}
+    except Exception:
+        return {}
+    finally:
+        db.close()
+
+
+def record_usage(problem_id: int):
+    """记录一次问题被使用（STAR 生成 / 搜索点击等）。"""
+    db = SessionLocal()
+    try:
+        from sqlalchemy import text
+        db.execute(
+            text("UPDATE problems SET usage_count = usage_count + 1 WHERE id = :id"),
+            {"id": problem_id},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
+def record_search_impressions(problem_ids: list[int]):
+    """记录搜索结果曝光，用于计算点击转化。"""
+    # 目前仅做记录，曝光次数暂不参与排序，留待后续 CTR 分析
+    pass
+
+
+# ══════════════════════════════════════════════════════════════════
+# 查询改写
+# ══════════════════════════════════════════════════════════════════
+
+# 自然语言中的口语化填充词，会被移除以提高检索精度
+_QUERY_FILLER_WORDS = [
+    # 中文口语填充
+    "上次那个", "我记得有个", "之前遇到过", "帮我查一下", "帮我查查",
+    "我想找", "有没有", "怎么修的", "怎么解决的", "那个问题",
+    "之前那个", "好像有个", "大概是一个", "记不清了",
+    "那个", "这个", "有个", "一种", "怎么", "什么",
+    # 英文口语填充
+    "help me find", "help me ", "how to ", "how do i ", "i remember ",
+    "i think ", "can you ", "please ", "look up ", "search for ",
+    "find me ", "what is ", "what are ", "tell me ", "show me ",
+]
+_QUERY_FILLER_RE = "|".join(_QUERY_FILLER_WORDS)
+
+
+def _rewrite_query(query_text: str) -> str:
+    """
+    查询改写：去除口语化填充词，提取技术关键词，提升检索命中率。
+    不做 LLM 调用——纯规则引擎，零延迟、零成本。
+    """
+    import re
+
+    cleaned = query_text.strip()
+    # 移除口语填充词（大小写不敏感）
+    cleaned = re.sub(_QUERY_FILLER_RE, " ", cleaned, flags=re.IGNORECASE)
+    # 合并多余空白
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    # 如果清空了则返回原文
+    return cleaned if cleaned else query_text.strip()
+
+
+# ══════════════════════════════════════════════════════════════════
 # 双通道混合检索 + RRF 融合
 # ══════════════════════════════════════════════════════════════════
 
@@ -221,6 +299,9 @@ def search(
     返回:
         dict: {"results": [...], "_debug": {...}}
     """
+    # ── 查询改写：去口语化，提取技术关键词 ──────────────────
+    rewritten = _rewrite_query(query_text)
+
     # ── 确定项目 ID（知识域收缩）─────────────────────────────
     project_id = None
     if project_name:
@@ -233,13 +314,16 @@ def search(
             db.close()
 
     # ── 通道一: 向量检索 ─────────────────────────────────────
-    vector_results = _vector_search(query_text, k * 3, tech_filter, project_id)
+    vector_results = _vector_search(rewritten, k * 3, tech_filter, project_id)
 
     # ── 通道二: FTS5 关键词检索 ──────────────────────────────
-    keyword_results = _keyword_search(query_text, k * 3, tech_filter, project_id)
+    keyword_results = _keyword_search(rewritten, k * 3, tech_filter, project_id)
+
+    # ── 加载使用计数（隐式反馈 boost）────────────────────────
+    usage_boosts = _load_usage_boosts()
 
     # ── RRF 融合 ─────────────────────────────────────────────
-    fused = _rrf_fusion(vector_results, keyword_results, k, RRF_K)
+    fused = _rrf_fusion(vector_results, keyword_results, k, RRF_K, usage_boosts)
 
     # ── 补全文档内容 ─────────────────────────────────────────
     results = _enrich_results(fused)
@@ -247,6 +331,8 @@ def search(
     return {
         "results": results,
         "_debug": {
+            "original_query": query_text,
+            "rewritten_query": rewritten,
             "vector": vector_results[:k],
             "keyword": keyword_results[:k],
             "fused": fused,
@@ -409,12 +495,16 @@ def _rrf_fusion(
     keyword_results: list[dict],
     k: int,
     rrf_k: int = 60,
+    usage_boosts: dict | None = None,
 ) -> list[dict]:
     """
     RRF (Reciprocal Rank Fusion) 融合两路检索结果。
 
     公式: RRF(d) = Σ 1 / (k + rank_i(d))
     分数越高越相关。
+
+    隐式反馈 boost：高频使用的文档获得最多 30% 的额外权重。
+    boost = 1 + min(usage_count, 10) * 0.03
     """
     scores: dict[int, float] = defaultdict(float)
     doc_info: dict[int, dict] = {}
@@ -432,6 +522,13 @@ def _rrf_fusion(
         scores[pid] += 1.0 / (rrf_k + rank)
         if pid not in doc_info:
             doc_info[pid] = item
+
+    # ── 隐式反馈 boost ────────────────────────────────────────
+    if usage_boosts:
+        for pid, usage in usage_boosts.items():
+            if pid in scores and usage > 0:
+                boost = 1.0 + min(usage, 10) * 0.03
+                scores[pid] *= boost
 
     # 按 RRF 分数降序排列
     sorted_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:k]
@@ -485,6 +582,45 @@ def _enrich_results(fused: list[dict]) -> list[dict]:
     finally:
         db.close()
     return fused
+
+
+# ══════════════════════════════════════════════════════════════════
+# 语义去重
+# ══════════════════════════════════════════════════════════════════
+
+DEDUP_THRESHOLD = 0.125  # 余弦距离阈值，低于此值视为重复（0=完全相同，1=无关）
+
+
+def search_similar(title: str, description: str = "") -> tuple[int | None, float]:
+    """
+    在已有问题库中搜索与新问题最相似的记录。
+
+    参数:
+        title: 新问题的标题
+        description: 新问题的描述（可选）
+
+    返回:
+        (problem_id, distance) — 最近匹配及其余弦距离。无匹配时返回 (None, 1.0)。
+    """
+    query_text = title
+    if description:
+        query_text = f"{title} {description}"
+
+    query_vector = _embed(query_text)
+    collection = _get_collection()
+
+    results = collection.query(
+        query_embeddings=[query_vector],
+        n_results=1,
+        include=["metadatas", "distances"],
+    )
+
+    if not results["ids"] or not results["ids"][0]:
+        return (None, 1.0)
+
+    pid = int(results["ids"][0][0])
+    distance = results["distances"][0][0] if results["distances"] else 1.0
+    return (pid, distance)
 
 
 # ── 全量重建 ───────────────────────────────────────────────────

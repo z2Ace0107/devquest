@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-DevQuest Log — ORM 数据模型
+DevQuest — ORM 数据模型
 
 定义两个核心表:
 - Project（项目）: 存储项目名称与创建时间
@@ -67,6 +67,7 @@ class Problem(Base):
     priority_score = Column(Integer, default=5, nullable=False, comment="优先级评分 1-10")
     raw_conversation = Column(Text, nullable=True, comment="原始对话片段")
     star_story = Column(Text, nullable=True, comment="STAR 故事（JSON 结构）")
+    usage_count = Column(Integer, default=0, nullable=False, comment="被检索并使用次数（隐式反馈信号）")
     created_at = Column(
         TIMESTAMP,
         default=datetime.utcnow,
@@ -87,6 +88,7 @@ class Problem(Base):
         return {
             "id": self.id,
             "project_id": self.project_id,
+            "project_name": self.project.name if self.project else None,
             "title": self.title,
             "description": self.description,
             "attempts": self.attempts,
@@ -96,5 +98,6 @@ class Problem(Base):
             "priority_score": self.priority_score,
             "raw_conversation": self.raw_conversation,
             "star_story": self.star_story,
+            "usage_count": self.usage_count,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

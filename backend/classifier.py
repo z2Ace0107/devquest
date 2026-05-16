@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-DevQuest Log — 技术标签自动分类
+DevQuest — 技术标签自动分类
 
 对已提取的问题进行二次分类，标准化 tech_stack 和 problem_type 字段。
 支持:

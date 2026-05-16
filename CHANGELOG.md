@@ -1,0 +1,80 @@
+# Changelog
+
+## V1.1 (已完成 — 2026-05-12)
+
+### 新增
+- ✅ `backend/session_ingestor.py`：自动扫描 Claude JSONL 对话记录，零操作摄入经验库
+- ✅ `backend/weekly_report.py`：LLM 生成结构化周报（关键问题 / 技能成长 / 待补短板）
+- ✅ 前端搜索增强：搜索建议、关键词高亮、最近7天快捷筛选
+- ✅ 新增 API 端点：`/ingest/start`、`/ingest/status`、`/report/weekly`
+
+### 变更
+- 经验入库方式从"手动上传 .txt"升级为"自动读取 Claude 本地会话 JSONL"
+- 新增环境变量 `CLAUDE_SESSIONS_DIR`、`WATCH_PROJECTS`
+
+### 移除
+- 原计划的 file_watcher.py（watchdog 监听 .txt 目录）— 被 session_ingestor 替代
+- 原计划的 tray_app.py（pystray 系统托盘）— 无交互需求的常驻进程，投入产出比低
+
+---
+
+## V1.2 (已完成 — 2026-05-14)
+
+### 定位调整
+- 从"独立 Web 应用"重构为"基于 MCP 协议的 Claude IDE 内置服务"
+
+### Phase 1: MCP Server 化
+- 新建 `backend/mcp_server.py` — Python MCP SDK，11 个 tools
+- 删除 `backend/app.py` — FastAPI 被 MCP Server 替代
+- 删除 `frontend/app.py` — Streamlit 被 Claude Desktop 替代
+- 删除 `backend/weekly_report.py` — 功能蔓延，与核心定位无关
+
+### Phase 2: Rule-Maker 反思引擎
+- 新建 `backend/rule_maker.py` — 读取本周 problems → LLM 反思 → 生成规则草案
+- 写入 `cursorrules_suggestions.md`（Human-in-the-loop，不直接覆写）
+- MCP tools: `run_reflection`、`get_suggestions`
+
+### Phase 3: 清理
+- 精简 `requirements.txt`（移除 fastapi/uvicorn/streamlit/altair）
+- 合并冗余文档为 3 个：AGENTS.md + CHANGELOG.md + README.md
+
+### 新增 MCP Tools
+- `get_dashboard` — 统计摘要
+- `update_score` — 手动修改评分
+- `run_reflection` — 触发 Rule-Maker 反思
+- `get_suggestions` — 查看待确认规则草案
+
+---
+## V1.3 (已完成 — 2026-05-15)
+
+### 检索增强
+
+- 查询改写 (`_rewrite_query()`): 自然语言去口语化，中英文填充词过滤，纯规则引擎无 LLM 开销
+- 隐式反馈闭环: `usage_count` 字段 + RRF 融合排序 boost，高频使用文档获得最多 30% 额外权重
+- 语义去重: 新问题入库前向量相似度匹配，余弦距离 < 0.125 触发合并（追加 attempts / 替换更优 solution / 合并 tech_stack）
+
+### 产品化
+
+- README 追加"为什么做这个"段落，从产品视角讲述设计决策
+- AGENTS.md 更新 V1.3 版本记录
+
+### 评测
+- 提取引擎 1 样本 4 问题: 召回率 100%，精确率 100%，类型准确率 75%（新增 three anchors 未影响评测结果）
+
+---
+
+## V1.0 (2026-05-10)
+
+### 新增
+- 对话导入与 LLM 问题提取引擎（extractor + classifier）
+- 四维度优先级评分算法（scorer）
+- STAR 面试故事生成（star_gen）
+- ChromaDB 向量语义搜索 + SQLite FTS5 双通道混合检索（RRF 融合）
+- FastAPI 后端 7 端点 + Streamlit 四页面仪表盘
+- Docker / docker-compose 部署
+
+### 技术栈
+Python 3.10+ / FastAPI / LangChain / ChromaDB / SQLite FTS5 / Streamlit / DeepSeek API / 阿里百炼 Embedding / Docker
+
+### 统计
+13 次 commit，7 个 API 端点，4 页面仪表盘，双存储架构

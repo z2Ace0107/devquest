@@ -1,0 +1,31 @@
+以下是开发者 Ace 与 AI 助手在开发「用户中心 API 迁移」过程中的对话记录：
+
+=== 对话片段 ===
+
+Ace: 我们把用户服务的 API 从 REST 迁移到 GraphQL，但发现原来的 REST 接口有 30 多个调用方，没法一次性全部切过去。怎么平滑过渡？
+
+AI: 你需要一个过渡期方案，让两套 API 共存。推荐的策略是：
+1. 在新 GraphQL schema 中保留所有 REST 接口的字段语义
+2. 在网关层做路由：根据请求头或路径前缀决定走 REST 还是 GraphQL
+3. 给每个调用方设定迁移截止日期，逐步关闭 REST 端点
+
+Ace: 我们用了 Apollo GraphQL。有个具体问题：原来 REST 返回的字段名是 snake_case（比如 `user_id`），但 GraphQL schema 里定义的是 camelCase（`userId`）。这会导致前端大量改动。
+
+AI: Apollo Server 有 resolver 中间件可以自动转换。或者更简单的方案：在 GraphQL schema 里保留 snake_case 字段名，加上 alias：
+```graphql
+type User {
+  user_id: ID!
+  user_name: String
+}
+```
+前端不需要改任何字段名。等所有调用方迁移完成后，再统一改成 camelCase 作为第二阶段优化。
+
+Ace: 好，先保持 snake_case。但我还有个更大的问题——迁移过程中发现 REST 和 GraphQL 返回的数据不一致。排查发现是 REST 用了缓存层（Redis），GraphQL 直接查数据库，缓存和 DB 有延迟。
+
+AI: 这是典型的双写不一致问题。根源是 REST 的缓存更新逻辑和 GraphQL 的直查逻辑没有统一。建议：
+1. 短期：GraphQL resolver 也读 Redis 缓存（用 `dataloader` + Redis），保证数据源一致
+2. 长期：用一个统一的 Data Access Layer，REST 和 GraphQL 都经过它访问数据
+
+这样缓存失效逻辑集中在一处，不会出现两边数据不一致。
+
+Ace: 短期方案实现了，数据不一致问题解决了。DAL 的长期重构我加到下个 sprint 了。

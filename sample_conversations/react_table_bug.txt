@@ -1,0 +1,42 @@
+以下是开发者 Ace 与 AI 助手在开发「数据看板前端」过程中的对话记录：
+
+=== 对话片段 ===
+
+Ace: 我的 React 表格组件渲染 5000 行数据的时候浏览器直接卡死了。我用了 Ant Design 的 Table 组件，每一列还有一些自定义的 render 函数。
+
+AI: 5000 行数据量对 Table 组件来说确实很大。问题出在每次 state 更新都会重渲染所有 5000 行。你先确认一下是不是所有列都需要同时渲染。
+
+Ace: 大部分列确实需要，但是我发现有一个问题——每次鼠标 hover 某一行的时候，整个表格都在闪。
+
+AI: 那是典型的 React 重渲染问题。你的 hover 状态更新触发了父组件重新渲染，然后所有子行都跟着渲染。建议：
+1. 把每一行抽成独立的 `React.memo` 组件
+2. hover 状态用 CSS `:hover` 代替 JS state
+3. 如果必须用 JS 控制 hover，把 hoveredRowId 存在 ref 里而不是 state 里
+
+Ace: 我用 React.memo 包了一下行组件，闪烁问题解决了。但首次渲染还是要 3-4 秒。
+
+AI: 5000 行 DOM 节点太多了。对于这种数据量，你需要虚拟滚动。Ant Design 的 Table 组件本身支持虚拟滚动：
+```jsx
+<Table
+  virtual
+  scroll={{ y: 600 }}
+  dataSource={data}
+  columns={columns}
+/>
+```
+加上 `virtual` 属性后只会渲染可视区域的行，DOM 节点数从 5000 降到 ~20。
+
+Ace: virtual 属性加上了，现在渲染秒开了。但我还有个问题——表格里有一个列是根据其他列计算出来的（比如折扣后的价格），每次渲染都要重新算。这个怎么优化？
+
+AI: 在数据源层面做计算，不要在 render 函数里算。用 `useMemo` 预处理数据：
+```js
+const processedData = useMemo(() => {
+  return rawData.map(item => ({
+    ...item,
+    discountedPrice: item.price * (1 - item.discount),
+  }));
+}, [rawData]);
+```
+这样计算只跑一次，而不是每次渲染都跑。
+
+Ace: 搞定了。表格现在流畅多了，首屏加载 < 1s，hover 也不闪了。

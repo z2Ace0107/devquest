@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-DevQuest Log — 数据库初始化与连接管理
+DevQuest — 数据库初始化与连接管理
 
 使用 SQLAlchemy 连接 SQLite，提供:
 - 引擎创建（engine）
@@ -59,6 +59,14 @@ def init_db():
             "CREATE VIRTUAL TABLE IF NOT EXISTS problems_fts "
             "USING fts5(title, description, solution)"
         ))
+        # 向前兼容：usage_count 列（V1.3 新增）
+        try:
+            conn.execute(text(
+                "ALTER TABLE problems ADD COLUMN usage_count INTEGER DEFAULT 0"
+            ))
+            conn.commit()
+        except Exception:
+            pass
         conn.commit()
 
 

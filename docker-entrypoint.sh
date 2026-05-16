@@ -1,10 +1,10 @@
 #!/bin/bash
-# DevQuest Log — Docker 容器入口
+# DevQuest — Docker 容器入口
 # 同时启动 FastAPI 后端和 Streamlit 前端
 
 set -e
 
-echo "Starting DevQuest Log..."
+echo "Starting DevQuest..."
 
 # 启动 FastAPI 后端
 uvicorn backend.app:app --host 0.0.0.0 --port 8000 &

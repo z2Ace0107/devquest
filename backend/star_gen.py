@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-DevQuest Log — STAR 故事生成模块
+DevQuest — STAR 故事生成模块
 
 将技术问题记录转换为面试可用的 STAR 故事（第一人称、口语化）:
 - Situation: 当时在做什么

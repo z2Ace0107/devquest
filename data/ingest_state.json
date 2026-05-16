@@ -1,0 +1,109 @@
+{
+  "e--develop-claude": {
+    "ingested_sessions": {
+      "2a91e946-d4c8-4710-8b12-addee3bcc8e9": {
+        "file_hash": "ceaf6e545465515fc448554221895dc0",
+        "message_count": 4,
+        "problems_extracted": 0,
+        "ingested_at": "2026-05-13T00:37:04.913375Z"
+      },
+      "59943fd0-bbdc-44a0-befe-c0dd47f87efa": {
+        "file_hash": "b01c76f9a684f5c7e6453921ab65408a",
+        "message_count": 2,
+        "problems_extracted": 0,
+        "ingested_at": "2026-05-13T00:37:04.914591Z"
+      },
+      "42822ed7-4047-4d59-b67f-a7710bc20b5d": {
+        "file_hash": "9c29fcb2d09e6e11df616db5c5ff9e6d",
+        "message_count": 105,
+        "problems_extracted": 7,
+        "ingested_at": "2026-05-13T00:37:47.193224Z"
+      },
+      "2dd69401-a443-447f-b3d3-c8295129a8a2": {
+        "file_hash": "b6c16624d10c8a0e7140760bc773248a",
+        "message_count": 4,
+        "problems_extracted": 0,
+        "ingested_at": "2026-05-13T00:37:48.793909Z"
+      },
+      "62d52209-5764-4291-86d4-613e78762e87": {
+        "file_hash": "6071d58296e05b37cdc1c79a9b3bb0e6",
+        "message_count": 4,
+        "problems_extracted": 1,
+        "ingested_at": "2026-05-13T00:37:55.162689Z"
+      },
+      "05a86ac4-f13e-4f63-adc9-3a6d90ce01b8": {
+        "file_hash": "c1f738fc92b55ac62ce765f436c3193e",
+        "message_count": 164,
+        "problems_extracted": 11,
+        "ingested_at": "2026-05-13T00:38:50.035761Z"
+      },
+      "f5d3f7e9-a04a-41c1-98a2-3fbbcae1058e": {
+        "file_hash": "355eb1578a1b26811ff2a976bb081b77",
+        "message_count": 4,
+        "problems_extracted": 1,
+        "ingested_at": "2026-05-13T00:38:57.742053Z"
+      },
+      "2a1eed15-df07-4b27-b3cc-1ed24b6bb3cd": {
+        "file_hash": "0937cb26132c6a55c93472795aa6edc0",
+        "message_count": 4,
+        "problems_extracted": 0,
+        "ingested_at": "2026-05-13T00:38:59.433092Z"
+      },
+      "c1594bee-3853-4fdf-abd6-c0987b21d11b": {
+        "file_hash": "fcaaee771754fe78518b7f8f6ca19aca",
+        "message_count": 5,
+        "problems_extracted": 2,
+        "ingested_at": "2026-05-13T00:39:11.282097Z"
+      },
+      "69405519-c592-46de-b01c-cacd7fa5af94": {
+        "file_hash": "8c97be04a3242e411d8508759e841a82",
+        "message_count": 202,
+        "problems_extracted": 9,
+        "ingested_at": "2026-05-13T00:40:02.006348Z"
+      },
+      "ac8f5200-97c1-4438-b71a-8460f804138e": {
+        "file_hash": "af892f7a8f12c24db2e342ad7828417f",
+        "message_count": 78,
+        "problems_extracted": 11,
+        "ingested_at": "2026-05-13T00:40:29.090092Z"
+      },
+      "96ee39e2-01c4-4867-91c6-3a3bbfa8c549": {
+        "file_hash": "f00617fd755e5afb058900fd1692020b",
+        "message_count": 96,
+        "problems_extracted": 7,
+        "ingested_at": "2026-05-13T00:41:04.066225Z"
+      },
+      "d2dfa656-f52f-41ee-acd1-a51a5e4ca139": {
+        "file_hash": "303663eb13a7b4a73c31b7f8716d084e",
+        "message_count": 106,
+        "problems_extracted": 14,
+        "ingested_at": "2026-05-13T00:42:15.792809Z"
+      },
+      "534dde1d-595d-4aa9-bb11-e3b15cc8e023": {
+        "file_hash": "4d5a3f5cd8106ed55f284b88005fe640",
+        "message_count": 75,
+        "problems_extracted": 5,
+        "ingested_at": "2026-05-13T00:42:51.611434Z"
+      },
+      "f534d241-a5d7-4ab7-96cd-b9590dea5680": {
+        "file_hash": "fecd389f5f887d77cbaa9e26694ea6e6",
+        "message_count": 185,
+        "problems_extracted": 8,
+        "ingested_at": "2026-05-13T00:43:33.396381Z"
+      },
+      "f2310864-ba9b-4dee-8858-e50f025d1be7": {
+        "file_hash": "19095dc69bb4881035afd76001213d92",
+        "message_count": 57,
+        "problems_extracted": 3,
+        "ingested_at": "2026-05-13T00:43:54.128248Z"
+      },
+      "b3a2c4b9-e52c-4a6c-8fbd-82261e131915": {
+        "file_hash": "ed9c756ad48b80d7a9a121593100b500",
+        "message_count": 14,
+        "problems_extracted": 1,
+        "ingested_at": "2026-05-13T00:44:06.277037Z"
+      }
+    },
+    "last_ingested_at": "2026-05-13T00:44:06.277050Z"
+  }
+}

@@ -1,0 +1,44 @@
+以下是开发者 Ace 与 AI 助手在开发「微服务 CI/CD 流水线」过程中的对话记录：
+
+=== 对话片段 ===
+
+Ace: 我们的 CI/CD 流水线在 GitHub Actions 上跑一次要 18 分钟，太慢了。每次提交都要等这么久，严重影响开发效率。有什么优化方法？
+
+AI: 18 分钟确实太长了。先看看时间花在哪里——你用的是 monorepo 还是每个服务独立仓库？
+
+Ace: Monorepo，5 个微服务在一个仓库里。每次改一个服务，所有服务的测试和构建都跑一遍。
+
+AI: 这就是问题所在。你需要按变更范围做条件构建。用 GitHub Actions 的 `paths` filter：
+```yaml
+on:
+  push:
+    paths:
+      - 'services/user-service/**'
+```
+这样只有改动的服务才会触发对应的 job。再配合 `paths-ignore` 排除文档等无关变更。
+
+Ace: 这个方案好。但还有个问题——我们的 Docker 镜像构建特别慢，`pip install` 那一步要 5 分钟。
+
+AI: Docker 构建慢通常是因为 layer cache 没命中。检查一下你的 Dockerfile 里 `COPY requirements.txt` 是不是在 `RUN pip install` 之前：
+```dockerfile
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+```
+这样只有在 requirements.txt 变化时才会重新 pip install。另外可以用 BuildKit 的缓存挂载：
+```dockerfile
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+```
+
+Ace: Dockerfile 改了，构建从 5 分钟降到了 30 秒。但我又发现新问题——加了 paths filter 后，某些跨服务的集成测试不跑了。比如改 user-service 的 API，order-service 的集成测试应该跑但不跑。
+
+AI: 这是 monorepo 条件构建的经典难题。你需要定义服务间的依赖关系。最简单的做法是维护一个依赖 map：
+```yaml
+service-deps:
+  user-service: [user-service, order-service, gateway]
+  order-service: [order-service, gateway]
+  gateway: [gateway]
+```
+当改了 user-service 时，触发 user-service、order-service、gateway 三个服务的测试。可以用 GitHub Actions 的 matrix strategy 配合这个 map 动态生成 job。
+
+Ace: 用 matrix + 依赖 map 实现好了。现在 CI 平均 4 分钟跑完（之前 18 分钟），而且该跑的测试一个不少。

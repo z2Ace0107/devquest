@@ -1,10 +1,10 @@
-# DevQuest Log — Docker Compose 部署
+# DevQuest — Docker Compose 部署
 # 启动: docker compose up -d
 
 services:
   backend:
     build: .
-    image: devquest-log:latest
+    image: devquest:latest
     container_name: devquest-backend
     ports:
       - "8000:8000"
@@ -22,7 +22,7 @@ services:
 
   frontend:
     build: .
-    image: devquest-log:latest
+    image: devquest:latest
     container_name: devquest-frontend
     ports:
       - "8501:8501"
