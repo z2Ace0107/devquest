@@ -152,8 +152,6 @@ devquest/
 │   ├── eval_extractor.py     # 提取引擎评测
 │   └── smoke_test.py         # 冒烟测试
 ├── sample_conversations/     # 评测用对话样本 (4 组)
-├── docs/
-│   ├── INTERVIEW_QA.md       # 面试问答手册
 ├── data/                     # SQLite + ChromaDB 持久化
 ├── AGENTS.md                 # AI 开发规范
 └── CHANGELOG.md              # 版本记录
