@@ -84,7 +84,27 @@ EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
 重启 Claude Code 后，11 个 `mcp__devquest__*` 工具即可使用。
 
-### 5. 首次摄入
+### 5. 安装 Skill（推荐）
+
+Skill 提供快捷命令和自然语言触发，无需记住工具名和参数。
+
+将 `skill/SKILL.md` 复制到 `~/.claude/skills/devquest/SKILL.md`：
+
+```bash
+mkdir -p ~/.claude/skills/devquest
+cp skill/SKILL.md ~/.claude/skills/devquest/SKILL.md
+```
+
+重启 Claude Code 后即可使用：
+
+| 快捷命令 | 效果 |
+|----------|------|
+| `/devquest save` | 自动从当前对话提取问题入库 |
+| `/devquest 记` | 同上 |
+| 说"查经验" | 搜索历史经验 |
+| 说"经验库概览" | 查看统计摘要 |
+
+### 6. 首次摄入
 
 在 Claude Code 中输入：
 
@@ -152,6 +172,8 @@ devquest/
 │   ├── eval_extractor.py     # 提取引擎评测
 │   └── smoke_test.py         # 冒烟测试
 ├── sample_conversations/     # 评测用对话样本 (4 组)
+├── skill/
+│   └── SKILL.md               # Claude Code Skill（一键安装）
 ├── data/                     # SQLite + ChromaDB 持久化
 ├── AGENTS.md                 # AI 开发规范
 └── CHANGELOG.md              # 版本记录
