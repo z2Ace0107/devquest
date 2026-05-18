@@ -44,6 +44,26 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
+# ── Migration 辅助 ──────────────────────────────────────────────
+
+def _migrate_v2_columns(conn):
+    """V2.0 新增列：静默迁移，列已存在时跳过。"""
+    v2_columns = [
+        ("first_seen_at", "TIMESTAMP"),
+        ("environment", "TEXT"),
+        ("feedback_score", "FLOAT DEFAULT 0.0"),
+        ("feedback_count", "INTEGER DEFAULT 0"),
+        ("solution_version", "INTEGER DEFAULT 1"),
+    ]
+    for col_name, col_type in v2_columns:
+        try:
+            conn.execute(text(
+                f"ALTER TABLE problems ADD COLUMN {col_name} {col_type}"
+            ))
+        except Exception:
+            pass
+
+
 # ── 初始化函数 ────────────────────────────────────────────────
 def init_db():
     """
@@ -64,9 +84,10 @@ def init_db():
             conn.execute(text(
                 "ALTER TABLE problems ADD COLUMN usage_count INTEGER DEFAULT 0"
             ))
-            conn.commit()
         except Exception:
             pass
+        # 向前兼容：V2.0 新增 5 列
+        _migrate_v2_columns(conn)
         conn.commit()
 
 

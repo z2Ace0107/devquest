@@ -11,7 +11,7 @@ DevQuest — Rule-Maker 反思引擎
 
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -83,7 +83,7 @@ def _get_llm() -> ChatOpenAI:
 
 def _get_week_problems() -> list[dict]:
     """查询本周新增的问题记录，按评分降序。"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     week_start = now - timedelta(days=now.weekday())
     week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -227,7 +227,7 @@ def _write_suggestions(week_label: str, summary: str, rules: list, problems: lis
         "> - **Cursor**: `.cursorrules`",
         "> - **GitHub Copilot**: `.github/copilot-instructions.md`",
         "",
-        f"> 生成时间: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC",
+        f"> 生成时间: {datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M')} UTC",
         f"> 数据来源: {week_label}，LLM 反思生成",
         f"> 状态: 待人工审核确认",
         "",
@@ -294,13 +294,13 @@ def _write_suggestions(week_label: str, summary: str, rules: list, problems: lis
 # ── 工具函数 ───────────────────────────────────────────────────
 
 def _week_start_str() -> str:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     week_start = now - timedelta(days=now.weekday())
     return week_start.strftime("%Y-%m-%d")
 
 
 def _week_label() -> str:
     week_start = _week_start_str()
-    week_end_dt = datetime.utcnow() - timedelta(days=datetime.utcnow().weekday())
+    week_end_dt = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=datetime.now(timezone.utc).replace(tzinfo=None).weekday())
     week_end = (week_end_dt + timedelta(days=6)).strftime("%Y-%m-%d")
     return f"{week_start} ~ {week_end}"

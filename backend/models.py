@@ -7,10 +7,10 @@ DevQuest — ORM 数据模型
 - Problem（问题）: 存储每个技术问题的完整信息，关联到某个项目
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, Integer, String, Text, TIMESTAMP,
+    Column, Integer, String, Text, Float, TIMESTAMP,
     ForeignKey,
 )
 from sqlalchemy.orm import relationship
@@ -28,7 +28,7 @@ class Project(Base):
     name = Column(String(255), unique=True, nullable=False, comment="项目名称")
     created_at = Column(
         TIMESTAMP,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         nullable=False,
         comment="创建时间"
     )
@@ -70,10 +70,19 @@ class Problem(Base):
     usage_count = Column(Integer, default=0, nullable=False, comment="被检索并使用次数（隐式反馈信号）")
     created_at = Column(
         TIMESTAMP,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         nullable=False,
         comment="记录创建时间"
     )
+    first_seen_at = Column(
+        TIMESTAMP,
+        nullable=True,
+        comment="首次入库时间（用于时效衰减计算，空则回退到 created_at）"
+    )
+    environment = Column(Text, nullable=True, comment="运行环境 JSON: {os, python, docker, ...}")
+    feedback_score = Column(Float, default=0.0, nullable=False, comment="有用率 0-1")
+    feedback_count = Column(Integer, default=0, nullable=False, comment="反馈总次数")
+    solution_version = Column(Integer, default=1, nullable=False, comment="解法迭代版本")
 
     # 正向关联：通过 problem.project 访问所属项目
     project = relationship("Project", back_populates="problems")
@@ -100,4 +109,9 @@ class Problem(Base):
             "star_story": self.star_story,
             "usage_count": self.usage_count,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "first_seen_at": self.first_seen_at.isoformat() if self.first_seen_at else None,
+            "environment": self.environment,
+            "feedback_score": self.feedback_score,
+            "feedback_count": self.feedback_count,
+            "solution_version": self.solution_version,
         }

@@ -36,10 +36,12 @@ data/chroma_db/
 .DS_Store
 Thumbs.db
 
-# 环境变量
+# 环境变量（.env.example 是模板，需入库）
 .env
 .env.local
 .env.*.local
+*.env
+!.env.example
 
 # 日志
 *.log

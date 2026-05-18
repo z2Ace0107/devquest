@@ -13,6 +13,7 @@ DevQuest — 问题提取引擎
 
 import json
 import os
+from datetime import datetime, timezone
 import re
 from typing import Optional
 
@@ -220,6 +221,7 @@ def _save_to_db(
                 tech_stack=item.get("tech_stack", ""),
                 problem_type=item.get("problem_type", ""),
                 raw_conversation=raw_conversation,
+                first_seen_at=datetime.now(timezone.utc).replace(tzinfo=None),
             )
             db.add(problem)
             db.flush()  # 获取 problem.id
@@ -289,6 +291,9 @@ def _merge_problem(existing: Problem, new_item: dict, raw_conversation: str):
     # 追加原始对话
     if raw_conversation and raw_conversation not in (existing.raw_conversation or ""):
         existing.raw_conversation = (existing.raw_conversation or "") + "\n---\n" + raw_conversation
+
+    # 解法版本 +1
+    existing.solution_version = (existing.solution_version or 0) + 1
 
 
 # ── 便捷函数：从文件导入 ───────────────────────────────────────
