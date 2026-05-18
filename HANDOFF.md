@@ -15,7 +15,7 @@
 ## 当前架构
 
 ```
-Claude Code ← MCP Server (11 tools) → LangChain + DeepSeek → SQLite + ChromaDB
+MCP Client ← MCP Server (11 tools) → LangChain + DeepSeek → SQLite + ChromaDB
                   ↑                         ↑
             Skill 包装层             查询改写 / 反馈闭环 / 语义去重
 ```
