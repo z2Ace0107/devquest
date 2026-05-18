@@ -1,5 +1,25 @@
 # Changelog
 
+## V2.0 — 产品化优化 (进行中 — 2026-05-18)
+
+### Phase 3: MCP 新工具 ✅
+- 新建 `backend/services.py` 业务逻辑层（save_problem_service / record_feedback_service）
+- 新增 `save_problem` MCP tool：结构化捕获，跳过 LLM 提取，自动分类+评分+去重+索引
+- 新增 `record_feedback` MCP tool：显式反馈闭环，有用+10 usage / 没用-2
+- `search_experience` 增强：新增 `environment` 参数，OS 匹配 +15% 权重，不匹配标注差异
+- `_rrf_fusion` 加时效衰减 0.85^months + `_load_meta_for_boost` 批量加载环境/时间
+- `record_search_impressions` 实际实现（搜索曝光 usage_count +1）
+
+### Phase 2: 数据模型升级 ✅
+- Problem 新增 5 字段：`environment`、`feedback_score`、`feedback_count`、`first_seen_at`、`solution_version`
+- `database.py` 新增 `_migrate_v2_columns()` 静默迁移
+- `extractor._save_to_db` 新建记录时写入 `first_seen_at`
+
+### Phase 1: 工程修复 ✅
+- `datetime.utcnow()` → `datetime.now(timezone.utc).replace(tzinfo=None)`（Python 3.12+ 废弃 API）
+- `_safe_index` 加 `logging.exception`（异常不再静默吞噬）
+- `backend/__init__.py` 配置日志级别（环境变量 `LOG_LEVEL`，默认 WARNING）
+
 ## V1.1 (已完成 — 2026-05-12)
 
 ### 新增
@@ -21,17 +41,17 @@
 ## V1.2 (已完成 — 2026-05-14)
 
 ### 定位调整
-- 从"独立 Web 应用"重构为"基于 MCP 协议的 Claude IDE 内置服务"
+- 从"独立 Web 应用"重构为"MCP-native 服务"
 
 ### Phase 1: MCP Server 化
 - 新建 `backend/mcp_server.py` — Python MCP SDK，11 个 tools
 - 删除 `backend/app.py` — FastAPI 被 MCP Server 替代
-- 删除 `frontend/app.py` — Streamlit 被 Claude Desktop 替代
+- 删除 `frontend/app.py` — Streamlit 被 MCP Client 替代
 - 删除 `backend/weekly_report.py` — 功能蔓延，与核心定位无关
 
 ### Phase 2: Rule-Maker 反思引擎
 - 新建 `backend/rule_maker.py` — 读取本周 problems → LLM 反思 → 生成规则草案
-- 写入 `cursorrules_suggestions.md`（Human-in-the-loop，不直接覆写）
+- 写入 `rules_suggestions.md`（Human-in-the-loop，不直接覆写项目规则文件）
 - MCP tools: `run_reflection`、`get_suggestions`
 
 ### Phase 3: 清理

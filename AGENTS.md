@@ -4,6 +4,19 @@
 
 你是一个资深全栈AI应用开发专家。你正在协助开发者将 DevQuest 重构为**基于 MCP 协议的开发者"外脑" Agent**——从 Claude 对话中自动沉淀经验，通过 MCP Server 无缝回传，后台反思生成个性化开发规则。
 
+## 当前计划
+
+**V2.0 产品化优化** — 详细计划见 `C:\Users\Y7000p\.claude\plans\mutable-gliding-lark.md`（或 Claude Code 中输入 `/plans` 查看）。
+
+产品定位从"经验搜索引擎"转变为"AI 编程上下文增强层"。分 5 个 Phase 执行：
+1. ✅ Phase 1: 工程修复（utcnow 废弃 API、日志）
+2. ✅ Phase 2: 数据模型升级（environment / feedback / 时效衰减字段）
+3. ✅ Phase 3: MCP 新工具（save_problem / record_feedback / search_experience 增强）
+4. Phase 4: Skill 智能触发（错误自动搜索 / 主动提议记录）← **当前**
+5. Phase 5: 单测 + 跨平台安装脚本 + README 定位重写
+
+每个 Phase 完成后 → 手动测试 → Git 提交 → 用户验证通过 → 下一步。
+
 ## 核心原则
 
 - **解决实际问题优先**：每个功能必须回答"我明天会不会用到"。不加简历驱动的功能。
@@ -18,7 +31,7 @@
 - 存储：SQLAlchemy、SQLite
 - AI层：LangChain、DeepSeek API（兼容OpenAI格式）、阿里百炼 Embedding
 - 向量数据库：ChromaDB
-- 交互：Claude Desktop（MCP Client）
+- 交互：MCP Client（Claude Code / Claude Desktop / Cursor 等）
 - 对话源：Claude JSONL session 文件（~/.claude/projects/）
 
 ## 开发原则
@@ -79,7 +92,7 @@
 
 ### 目标
 
-从"独立 Web 应用"变为"Claude IDE 内置服务"。砍掉前端，MCP Server 协议化所有接口，新增后台反思引擎自动沉淀开发规则。
+从"独立 Web 应用"变为"MCP-native 服务"。砍掉前端，MCP Server 协议化所有接口，新增后台反思引擎自动沉淀开发规则。
 
 ### Phase 1: MCP Server 化（P0）
 
@@ -100,7 +113,7 @@
 | `update_score` | `PUT /problem/{id}/score` | 手动修改评分 |
 
 **删除：**
-- `frontend/app.py` — Streamlit（Claude Desktop 替代）
+- `frontend/app.py` — Streamlit（MCP Client 替代）
 - `backend/weekly_report.py` — 周报生成器（功能蔓延，与核心定位无关）
 - `backend/app.py` — FastAPI 服务（被 mcp_server.py 替代）
 
@@ -109,9 +122,9 @@
 新建 `backend/rule_maker.py`：
 
 1. 从 SQLite 取出本周新增 problems
-2. LLM 反思：提取共性模式 → 生成 `.cursorrules` 格式规则草案
-3. 写入 `cursorrules_suggestions.md`（不直接覆写，Human-in-the-loop）
-4. 用户 review 确认后手动合并
+2. LLM 反思：提取共性模式 → 生成平台无关的规则草案
+3. 写入 `rules_suggestions.md`（不直接覆写，Human-in-the-loop）
+4. 用户 review 确认后手动合并到对应工具的规则文件
 
 **MCP Tool：**
 
@@ -136,19 +149,19 @@
 ### 目标架构
 
 ```
-Claude Desktop ← MCP Server → LangChain → SQLite + ChromaDB
-                      ↓
-              Rule-Maker Daemon
-                      ↓
-         cursorrules_suggestions.md
-                      ↓
-    用户 review 确认后注入 .cursorrules
+MCP Client ← MCP Server → LangChain → SQLite + ChromaDB
+                  ↓
+          Rule-Maker Daemon
+                  ↓
+      rules_suggestions.md
+                  ↓
+ 用户 review 确认后注入项目规则文件
 ```
 
 ### 不做的事情（及原因）
 
 - ~~ChatGPT 对话导入~~ → 等核心链路跑通再说
-- ~~前端重写（Vue/React）~~ → Claude Desktop 就是交互入口
+- ~~前端重写（Vue/React）~~ → MCP Client 就是交互入口
 - ~~多用户支持 / 云端化~~ → 个人工具定位，简历够用即可
 - ~~weekly_report.py~~ → 功能蔓延，与"开发者外脑"定位无关
 
@@ -177,7 +190,7 @@ Claude Desktop ← MCP Server → LangChain → SQLite + ChromaDB
 
 ### 开发顺序
 
-此版本三项改动已完成，等待测试验证。
+此版本三项改动已完成（2026-05-15），4 组评测样本验证通过。
 
 ## V2.0 — 多源扩展（规划中，暂缓）
 
@@ -236,4 +249,4 @@ WATCH_PROJECTS=e--develop-claude
 1. FTS5 中文分词：需 Linux + ICU tokenizer 支持，当前 Windows 中文走 LIKE 兜底
 2. ChromaDB `where` 不支持 AND 组合：project 过滤和 tech 过滤不能同时走 DB 层
 3. Session 源路径硬编码 Windows 格式，跨平台需配置化
-4. MCP Server 依赖 Claude Desktop 作为 Client，无独立 UI
+4. MCP Server 依赖 MCP Client（Claude Code / Claude Desktop / Cursor 等），无独立 UI

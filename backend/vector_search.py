@@ -12,10 +12,15 @@ DevQuest — 双通道混合检索模块
 - _debug 影子观测：返回每通道原始排名与融合权重
 """
 
+import json
+import logging
 import os
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # ── 项目根目录 ────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -220,6 +225,45 @@ def _load_usage_boosts() -> dict[int, int]:
         db.close()
 
 
+def _load_meta_for_boost(pids: set[int]) -> dict[int, dict]:
+    """批量加载问题的环境和时间信息，用于环境匹配 boost 和时效衰减。"""
+    if not pids:
+        return {}
+    db = SessionLocal()
+    try:
+        from sqlalchemy import text
+        rows = db.execute(text(
+            "SELECT id, environment, first_seen_at "
+            "FROM problems WHERE id IN ({})".format(
+                ",".join(str(i) for i in pids)
+            )
+        )).fetchall()
+        result = {}
+        for row in rows:
+            pid = row[0]
+            env_str = row[1]
+            first_seen = row[2]
+            env_dict = None
+            os_val = None
+            if env_str:
+                try:
+                    env_dict = json.loads(env_str) if isinstance(env_str, str) else env_str
+                    os_val = env_dict.get("os") if isinstance(env_dict, dict) else None
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            result[pid] = {
+                "environment": env_str,
+                "os": os_val,
+                "first_seen_at": first_seen,
+            }
+        return result
+    except Exception:
+        logger.exception("_load_meta_for_boost 失败")
+        return {}
+    finally:
+        db.close()
+
+
 def record_usage(problem_id: int):
     """记录一次问题被使用（STAR 生成 / 搜索点击等）。"""
     db = SessionLocal()
@@ -237,9 +281,23 @@ def record_usage(problem_id: int):
 
 
 def record_search_impressions(problem_ids: list[int]):
-    """记录搜索结果曝光，用于计算点击转化。"""
-    # 目前仅做记录，曝光次数暂不参与排序，留待后续 CTR 分析
-    pass
+    """记录搜索结果曝光，用于未来 CTR 分析和排序优化。"""
+    if not problem_ids:
+        return
+    try:
+        from sqlalchemy import text
+        db = SessionLocal()
+        try:
+            pids_str = ",".join(str(i) for i in problem_ids)
+            db.execute(text(
+                f"UPDATE problems SET usage_count = usage_count + 1 "
+                f"WHERE id IN ({pids_str})"
+            ))
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("record_search_impressions 失败")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -286,6 +344,7 @@ def search(
     k: int = 5,
     tech_filter: Optional[str] = None,
     project_name: Optional[str] = None,
+    environment: Optional[dict] = None,
 ) -> dict:
     """
     双通道混合检索：向量语义 + FTS5 关键词 → RRF 融合排序。
@@ -295,6 +354,7 @@ def search(
         k: 返回数量
         tech_filter: 技术栈过滤关键词
         project_name: 可选，限定搜索范围到指定项目
+        environment: 可选，当前环境 dict，匹配经验权重提升
 
     返回:
         dict: {"results": [...], "_debug": {...}}
@@ -322,8 +382,9 @@ def search(
     # ── 加载使用计数（隐式反馈 boost）────────────────────────
     usage_boosts = _load_usage_boosts()
 
-    # ── RRF 融合 ─────────────────────────────────────────────
-    fused = _rrf_fusion(vector_results, keyword_results, k, RRF_K, usage_boosts)
+    # ── RRF 融合（含环境匹配 boost + 时效衰减）────────────────
+    fused = _rrf_fusion(vector_results, keyword_results, k, RRF_K,
+                        usage_boosts, environment)
 
     # ── 补全文档内容 ─────────────────────────────────────────
     results = _enrich_results(fused)
@@ -496,6 +557,7 @@ def _rrf_fusion(
     k: int,
     rrf_k: int = 60,
     usage_boosts: dict | None = None,
+    environment: dict | None = None,
 ) -> list[dict]:
     """
     RRF (Reciprocal Rank Fusion) 融合两路检索结果。
@@ -505,6 +567,11 @@ def _rrf_fusion(
 
     隐式反馈 boost：高频使用的文档获得最多 30% 的额外权重。
     boost = 1 + min(usage_count, 10) * 0.03
+
+    环境匹配 boost：OS 匹配的经验 +15% RRF 权重。
+
+    时效衰减：每过 1 个月权重乘 0.85。
+    time_decay = 0.85 ^ months_since_first_seen
     """
     scores: dict[int, float] = defaultdict(float)
     doc_info: dict[int, dict] = {}
@@ -523,6 +590,9 @@ def _rrf_fusion(
         if pid not in doc_info:
             doc_info[pid] = item
 
+    # ── 加载环境信息和时间戳（仅当需要环境匹配或时效衰减时）───
+    problem_meta = _load_meta_for_boost(set(scores.keys()))
+
     # ── 隐式反馈 boost ────────────────────────────────────────
     if usage_boosts:
         for pid, usage in usage_boosts.items():
@@ -530,12 +600,36 @@ def _rrf_fusion(
                 boost = 1.0 + min(usage, 10) * 0.03
                 scores[pid] *= boost
 
+    # ── 环境匹配 boost + 时效衰减 ─────────────────────────────
+    now = datetime.now(timezone.utc)
+    for pid in list(scores.keys()):
+        meta = problem_meta.get(pid, {})
+
+        # 环境匹配：OS 一致 +15% 权重
+        if environment and meta.get("os"):
+            if environment.get("os", "").lower() == meta["os"].lower():
+                scores[pid] *= 1.15
+                doc_info[pid]["env_match"] = True
+            else:
+                doc_info[pid]["env_match"] = False
+        else:
+            doc_info[pid]["env_match"] = None
+
+        # 时效衰减：0.85 ^ months
+        first_seen = meta.get("first_seen_at")
+        if first_seen:
+            delta = now - first_seen.replace(tzinfo=timezone.utc)
+            months = max(0.0, delta.days / 30.0)
+            time_decay = 0.85 ** months
+            scores[pid] *= time_decay
+
     # 按 RRF 分数降序排列
     sorted_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:k]
 
     result = []
     for pid in sorted_ids:
         info = doc_info[pid]
+        meta = problem_meta.get(pid, {})
         result.append({
             "problem_id": pid,
             "title": info.get("title", ""),
@@ -545,6 +639,8 @@ def _rrf_fusion(
             "vector_distance": info.get("distance"),
             "bm25_rank": info.get("bm25_rank"),
             "sources": _get_sources(pid, vector_results, keyword_results),
+            "environment": meta.get("environment"),
+            "environment_match": info.get("env_match"),
         })
     return result
 

@@ -2,14 +2,15 @@
 """
 DevQuest — MCP Server
 
-基于 Python MCP SDK，将经验库能力以标准 MCP 协议暴露给 Claude Desktop。
+基于 Python MCP SDK，将经验库能力以标准 MCP 协议暴露给 MCP Client。
 替代原有 FastAPI + Streamlit 架构。
 
 启动方式:
-  python backend/mcp_server.py          # stdio 模式 (Claude Desktop)
+  python backend/mcp_server.py          # stdio 模式 (MCP Client)
   python backend/mcp_server.py --http   # HTTP 模式 (开发调试)
 """
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -27,6 +28,7 @@ from mcp.server.fastmcp import FastMCP
 from backend.database import init_db, SessionLocal
 from backend.models import Problem, Project
 from backend import extractor, classifier, scorer, star_gen, vector_search, session_ingestor, rule_maker
+from backend import services
 
 # ── 启动初始化 ──────────────────────────────────────────────────
 init_db()
@@ -111,10 +113,10 @@ def _run_extract_pipeline(conversation_text: str, project_name: str) -> dict:
 
 
 def _safe_index(problem_id: int) -> bool:
-    """安全索引，异常返回 False。"""
     try:
         return vector_search.add_to_index(problem_id)
     except Exception:
+        logging.exception("索引失败 problem_id=%s", problem_id)
         return False
 
 
@@ -128,21 +130,25 @@ def search_experience(
     k: int = 5,
     tech: Optional[str] = None,
     project: Optional[str] = None,
+    environment: Optional[dict] = None,
 ) -> dict:
     """
     双通道混合检索历史技术经验。
 
     用自然语言描述你遇到的问题，从经验库中检索最相似的解决方案。
     向量语义 + FTS5 关键词双通道检索，RRF 融合排序。
+    支持环境过滤：传 environment={"os":"win11"} 会提升匹配经验的权重，不匹配的降权但不排除。
 
     参数:
         q: 查询文本（自然语言描述）
         k: 返回数量，默认 5
         tech: 按技术栈过滤，如 "Python"、"Docker"
         project: 限定项目范围
+        environment: 当前运行环境 dict，如 {"os":"win11","python":"3.12"}
     """
     data = vector_search.search(
         query_text=q, k=k, tech_filter=tech, project_name=project,
+        environment=environment,
     )
     # 记录搜索结果曝光（隐式反馈）
     result_ids = [r["problem_id"] for r in data["results"]]
@@ -197,6 +203,53 @@ def extract_from_text(conversation_text: str, project_name: str) -> dict:
         "project": project_name,
         **result,
     }
+
+
+@mcp.tool()
+def save_problem(
+    error: str,
+    solution: str,
+    attempts: Optional[list] = None,
+    environment: Optional[dict] = None,
+    project: Optional[str] = None,
+    problem_type: Optional[str] = None,
+    tech_stack: Optional[list] = None,
+) -> dict:
+    """
+    结构化录入一个问题，跳过 LLM 提取步骤。适合已明确知道错误+解法的场景。
+
+    参数:
+        error: 错误描述或复现步骤
+        solution: 最终解决方案
+        attempts: 尝试过的方案列表，如 ["方案1","方案2"]
+        environment: 运行环境，如 {"os":"win11","python":"3.12","docker":"26.1"}
+        project: 项目名，不传默认 "Unknown"
+        problem_type: 问题类型，不传则自动分类
+        tech_stack: 技术栈列表，不传则自动分类
+    """
+    result = services.save_problem_service(
+        error=error,
+        solution=solution,
+        attempts=attempts,
+        environment=environment,
+        project=project,
+        problem_type=problem_type,
+        tech_stack=tech_stack,
+    )
+    return result
+
+
+@mcp.tool()
+def record_feedback(problem_id: int, helpful: bool, note: Optional[str] = None) -> dict:
+    """
+    记录用户对某条经验的反馈，影响后续搜索排序。
+
+    参数:
+        problem_id: 问题 ID
+        helpful: True 表示有用，False 表示没用
+        note: 可选，备注为什么有用/没用
+    """
+    return services.record_feedback_service(problem_id, helpful, note)
 
 
 @mcp.tool()
@@ -402,9 +455,9 @@ def run_reflection() -> dict:
     触发 Rule-Maker 反思引擎。
 
     读取本周新增的技术问题，LLM 分析共性模式，
-    生成 .cursorrules 规则草案，写入 cursorrules_suggestions.md。
+    生成平台无关的规则草案，写入 rules_suggestions.md。
 
-    规则不直接覆写 .cursorrules——需要人工 review 确认（Human-in-the-loop）。
+    规则不直接覆写项目规则文件——需要人工 review 确认（Human-in-the-loop）。
     """
     result = rule_maker.run_reflection()
     return result
@@ -415,7 +468,7 @@ def get_suggestions() -> dict:
     """
     查看当前待确认的规则建议草案。
 
-    返回 cursorrules_suggestions.md 的内容，
+    返回 rules_suggestions.md 的内容，
     包含 LLM 生成的规则、置信度、来源问题。
     """
     result = rule_maker.get_suggestions()
