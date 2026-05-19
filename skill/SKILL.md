@@ -15,17 +15,21 @@ description: |
 
 ## 可用工具
 
-你有 11 个 MCP tool（`mcp__devquest__*`）：
+你有 13 个 MCP tool（`mcp__devquest__*`）：
 
 ### 经验检索
-- `search_experience` — 双通道混合检索（向量 + 关键词），搜历史经验。参数: q（查询文本）, k（返回数，默认5）, tech（技术栈过滤）, project（项目过滤）
+- `search_experience` — 双通道混合检索（向量 + 关键词），搜历史经验。参数: q, k（默认5）, tech, project, **environment**（环境过滤）
 - `list_problems` — 按条件筛选问题列表。参数: project, tech, min_score, problem_type, limit, offset
 - `get_dashboard` — 经验库统计摘要（总数、类型分布、技术栈排名、评分分布）
 
 ### 数据摄入
-- `ingest_sessions` — 增量扫描 Claude JSONL 对话，自动提取问题入库。参数: mode（'incremental' 增量 / 'full' 全量）
-- `ingest_status` — 查看摄入状态（已处理会话数、累计问题数）
-- `extract_from_text` — 手动粘贴对话文本提取问题。参数: conversation_text, project_name
+- `save_problem` — **结构化录入**（推荐）。参数: error, solution, attempts, environment, project, problem_type, tech_stack。跳过 LLM 提取，自动去重/分类/评分/索引
+- `extract_from_text` — 手动粘贴对话文本，LLM 提取问题。参数: conversation_text, project_name
+- `ingest_sessions` — 增量扫描 Claude JSONL 对话，自动提取。参数: mode（'incremental' / 'full'）
+- `ingest_status` — 查看摄入状态
+
+### 反馈闭环
+- `record_feedback` — 记录经验有用/没用，影响排序。参数: problem_id, helpful, note（可选）
 
 ### 反思与建议
 - `run_reflection` — 读取本周问题，LLM 反思生成规则草案，写入 rules_suggestions.md
@@ -37,6 +41,21 @@ description: |
 - `update_score` — 手动修改问题评分。参数: problem_id, score (1-10)
 
 ## 核心工作流
+
+### 0. 错误自动搜索（最高优先级，每次对话自动执行）
+
+当用户的命令执行失败、终端输出 error/exception/traceback，或用户描述了一个明确的技术报错信息时，你必须**自动、静默地**执行：
+
+1. 从错误信息中提取关键词（错误类型、涉及的技术组件、关键报错语句）
+2. 自动调用 `search_experience`，用错误关键词作为 q，k=3。同时传入当前 OS 环境：
+   - Windows → `environment={"os":"win11"}`
+   - Linux → `environment={"os":"linux"}`
+   - macOS → `environment={"os":"darwin"}`
+3. 如果找到了相关经验（至少 1 条，rrf_score >= 0.02）：
+   - 在你的回答开头自然地引入：「你的经验库里有 X 条相关记录——」
+   - 展示最匹配的 1-2 条，包含：当时的错误、最终解法、环境是否匹配（environment_match）
+   - 如果 environment_match=false，标注差异（如「⚠️ 此方案在 Linux 上验证，当前 Windows 可能需调整」）
+4. 如果没找到相关经验，**不提及经验库**，直接正常回答用户问题。
 
 ### 1. 用户搜索历史经验
 
@@ -85,12 +104,16 @@ description: |
 
 ### 5. 快捷记录（/devquest save / /devquest 记）
 
-当用户说"/devquest save""/devquest 记""记一下"（不带其他描述）时，**自动从当前对话提取问题**：
+当用户说"/devquest save""/devquest 记""记一下"时，**从对话上下文结构化提取问题**：
 
-1. 从对话历史中取最近 3-5 轮用户和 AI 的互动（截取当前对话中讨论技术问题的部分）
+1. 从对话历史中识别：
+   - error: 最近一次遇到的报错或技术问题描述
+   - attempts: 尝试过哪些方案（从对话中提取）
+   - solution: 最终解决方案（如果有）
+   - environment: 运行环境信息（OS、Python 版本、Docker 版本等，从对话上下文推断）
 2. 项目名自动推断：优先用用户最近说的项目名，其次用当前 `cwd` 目录名，都没有就用 "Unknown"
-3. 调 `extract_from_text` 传入拼接的对话文本 + 推断的项目名
-4. 回复格式简洁："已从刚才的对话中提取 X 个问题，存入 **[项目名]**"
+3. 调 `save_problem` 传入结构化参数（**不要**调 `extract_from_text`）
+4. 回复格式："已记录：**<问题简述>** → **[项目名]**"（若合并则提示"已合并到已有记录 #XX"）
 
 如果用户指定了项目名（如 `/devquest save 智能工单Agent系统`），优先用指定的。
 
@@ -101,11 +124,27 @@ description: |
 - `DevQuest` 或 `DevQuest Log` → "DevQuest"
 - 其他 → 用当前 git 仓库名或 cwd 目录名
 
+### 7. 主动提议记录
+
+当你帮用户成功解决一个技术问题后，判断是否值得记录。触发条件（**满足至少 2 条**）：
+- 排查过程跨 3 轮以上对话（说明这不是简单问题）
+- 用户表达了「原来是这样」「终于好了」「可以了」等解决信号
+- 问题是具体的（涉及特定错误码/配置/代码段），而非纯概念问答
+- 解决方案不是一眼能看出的（涉及非显而易见的知识）
+
+满足条件时，在回复末尾加一句：
+
+> 💡 要记到经验库吗？下次遇到类似报错会自动提醒你。
+
+- 用户回复"记""存""好""嗯"→ 调 `save_problem`，从对话上下文提取结构化信息
+- 用户忽略 → 不操作，不重复追问
+
 ## 搜索策略
 
 - 用户描述模糊时，用宽泛的关键词搜，k 设大一点（10-15）
 - 用户明确指定技术栈时，用 `tech` 参数精确过滤
 - 如果用户在当前项目的上下文中，优先用 `project` 参数限定范围
+- **始终传 `environment` 参数**（当前 OS），让环境和经验匹配者自动加分
 - 搜索无结果时，建议用户调整措辞重试，不要直接放弃
 
 ## 适用性分析的判断标准

@@ -12,7 +12,8 @@
 1. ✅ Phase 1: 工程修复（utcnow 废弃 API、日志）
 2. ✅ Phase 2: 数据模型升级（environment / feedback / 时效衰减字段）
 3. ✅ Phase 3: MCP 新工具（save_problem / record_feedback / search_experience 增强）
-4. Phase 4: Skill 智能触发（错误自动搜索 / 主动提议记录）← **当前**
+4. ✅ Phase 4: Skill 智能触发（错误自动搜索 / 主动提议记录）
+5. Phase 5: 单测 + 跨平台安装脚本 + README 定位重写 ← **当前**
 5. Phase 5: 单测 + 跨平台安装脚本 + README 定位重写
 
 每个 Phase 完成后 → 手动测试 → Git 提交 → 用户验证通过 → 下一步。

@@ -1,6 +1,12 @@
 # Changelog
 
-## V2.0 — 产品化优化 (进行中 — 2026-05-18)
+## V2.0 — 产品化优化 (进行中 — 2026-05-19)
+
+### Phase 4: Skill 智能触发 ✅
+- Skill 新增"错误自动搜索"工作流（最高优先级，遇 error 自动搜经验库，带环境匹配）
+- Skill 新增"主动提议记录"工作流（解决难题后自动问是否记录）
+- `/devquest save` 改用 `save_problem`（结构化捕获，不再走 LLM 提取）
+- 工具列表更新为 13 个 + 搜索策略强调传 environment 参数
 
 ### Phase 3: MCP 新工具 ✅
 - 新建 `backend/services.py` 业务逻辑层（save_problem_service / record_feedback_service）
