@@ -89,8 +89,6 @@ def save_problem_service(
             similar_pid, distance = vector_search.search_similar(
                 title=error[:100],
                 description=error,
-                solution=solution,
-                project_name=project_name,
             )
             if similar_pid and distance < 0.125:
                 existing = db.query(Problem).filter_by(id=similar_pid).first()

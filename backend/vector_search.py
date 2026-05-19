@@ -83,9 +83,15 @@ def _embed(text: str) -> list[float]:
 
 
 def _embed_batch(texts: list[str]) -> list[list[float]]:
+    """批量 embedding，阿里百炼限制单次最多 10 条。"""
     client = _get_embed_client()
-    response = client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
-    return [d.embedding for d in response.data]
+    results = []
+    batch_size = 10
+    for i in range(0, len(texts), batch_size):
+        chunk = texts[i:i + batch_size]
+        resp = client.embeddings.create(model=EMBEDDING_MODEL, input=chunk)
+        results.extend(d.embedding for d in resp.data)
+    return results
 
 
 # ── FTS5 全文索引操作 ──────────────────────────────────────────
