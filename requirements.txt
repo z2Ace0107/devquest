@@ -1,5 +1,5 @@
-# DevQuest — 基于 MCP 协议的开发者"外脑" Agent
-# V1.2 依赖清单
+# DevQuest — MCP-native 开发者"外脑" Agent
+# V2.0 依赖清单
 
 # MCP 协议
 mcp>=1.0.0
@@ -18,3 +18,6 @@ openai
 # 工具
 python-dotenv==1.0.1
 pydantic>=2.9
+
+# 开发
+pytest>=8.0
