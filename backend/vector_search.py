@@ -243,6 +243,11 @@ def _load_meta_for_boost(pids: set[int]) -> dict[int, dict]:
             pid = row[0]
             env_str = row[1]
             first_seen = row[2]
+            if isinstance(first_seen, str):
+                try:
+                    first_seen = datetime.fromisoformat(first_seen)
+                except (ValueError, TypeError):
+                    first_seen = None
             env_dict = None
             os_val = None
             if env_str:
