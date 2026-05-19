@@ -8,7 +8,6 @@ $venv_dir = "$repo_dir\.venv"
 $venv_python = "$venv_dir\Scripts\python.exe"
 $claude_home = "$env:USERPROFILE\.claude"
 $skills_dir = "$claude_home\skills\devquest"
-$claude_json = "$claude_home\claude.json"
 $settings_json = "$claude_home\settings.json"
 
 # 1. 创建虚拟环境 + 安装依赖
@@ -50,13 +49,13 @@ $mcp_entry = @{
     }
 }
 
-if (Test-Path $claude_json) {
-    $config = Get-Content $claude_json -Raw | ConvertFrom-Json
+if (Test-Path $settings_json) {
+    $config = Get-Content $settings_json -Raw | ConvertFrom-Json
     if (-not $config.mcpServers) { $config | Add-Member -NotePropertyName mcpServers -NotePropertyValue @{} -Force }
     $config.mcpServers | Add-Member -NotePropertyName devquest -NotePropertyValue $mcp_entry.devquest -Force
-    $config | ConvertTo-Json -Depth 4 | Set-Content $claude_json
+    $config | ConvertTo-Json -Depth 4 | Set-Content $settings_json
 } else {
-    @{ mcpServers = $mcp_entry } | ConvertTo-Json -Depth 4 | Set-Content $claude_json
+    @{ mcpServers = $mcp_entry } | ConvertTo-Json -Depth 4 | Set-Content $settings_json
 }
 
 # 5. 注册 MCP 权限
