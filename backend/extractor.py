@@ -17,8 +17,9 @@ from datetime import datetime, timezone
 import re
 from typing import Optional
 
+from pathlib import Path as _Path
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(_Path(__file__).resolve().parent.parent / ".env")
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage

@@ -73,21 +73,24 @@ devquest/
 - MCP 权限: `~/.claude/settings.json` → `mcp__devquest__*`（11 个）
 - Skill: `~/.claude/skills/devquest/SKILL.md`
 
-## 11 个 MCP Tools
+## 14 个 MCP Tools
 
 | Tool | 说明 |
 |------|------|
-| `search_experience` | 查询改写 + 双通道 RRF 检索 + 隐式反馈 boost |
+| `search_experience` | 查询改写 + 双通道 RRF 检索 + 环境匹配 + 时效衰减 |
+| `save_problem` | 结构化录入（推荐，跳过 LLM 提取） |
+| `extract_from_text` | 手动导入对话（LLM 提取） |
 | `ingest_sessions` | 自动摄入 Claude 对话 |
 | `ingest_status` | 摄入状态 |
-| `extract_from_text` | 手动导入对话 |
 | `list_problems` | 筛选问题列表 |
 | `get_dashboard` | 统计摘要 |
+| `record_feedback` | 显式反馈闭环 |
+| `push_feishu_weekly` | 推送周报到飞书 |
+| `run_reflection` | Rule-Maker 反思 |
+| `get_suggestions` | 查看规则草案 |
 | `rebuild_index` | 重建索引 |
 | `generate_star` | STAR 故事 |
 | `update_score` | 修改评分 |
-| `run_reflection` | Rule-Maker 反思 |
-| `get_suggestions` | 查看规则草案 |
 
 ## Skill 快捷命令
 

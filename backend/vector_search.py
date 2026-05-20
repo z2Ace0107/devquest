@@ -189,6 +189,7 @@ def add_to_index(problem_id: int) -> bool:
 
         return True
     except Exception:
+        logger.exception("add_to_index 失败 problem_id=%s", problem_id)
         return False
     finally:
         db.close()

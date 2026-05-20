@@ -4,7 +4,8 @@ description: >
   AI 编程上下文增强层——自动从对话中沉淀经验，在用户遇到技术问题时主动把历史方案推回来。
   适用所有技术场景：报错/异常/traceback/启动失败/环境配置/代码调试/架构决策/性能优化。
   触发词：/devquest save / /devquest 记 / 记一下 / 存一下 / 查经验 / 之前怎么修的 /
-  我记得有个坑 / 搜一下历史 / 导入对话 / 扫描会话 / 经验库概览 / 分析本周问题 / 反思 / 生成STAR。
+  我记得有个坑 / 搜一下历史 / 导入对话 / 扫描会话 / 经验库概览 / 分析本周问题 / 反思 / 生成STAR /
+  推送到飞书 / 推送周报。
 ---
 
 # DevQuest Skill
@@ -16,7 +17,7 @@ description: >
 
 ## 可用工具
 
-你有 13 个 MCP tool（`mcp__devquest__*`）：
+你有 14 个 MCP tool（`mcp__devquest__*`）：
 
 ### 经验检索
 - `search_experience` — 双通道混合检索（向量 + 关键词），搜历史经验。参数: q, k（默认5）, tech, project, **environment**（环境过滤）
@@ -25,12 +26,13 @@ description: >
 
 ### 数据摄入
 - `save_problem` — **结构化录入**（推荐）。参数: error, solution, attempts, environment, project, problem_type, tech_stack。跳过 LLM 提取，自动去重/分类/评分/索引
-- `extract_from_text` — 手动粘贴对话文本，LLM 提取问题。参数: conversation_text, project_name
+- `extract_from_text` — 手动粘贴对话文本，LLM 提取问题（V3.0 已由 save_problem 替代，保留兼容）。参数: conversation_text, project_name
 - `ingest_sessions` — 增量扫描 Claude JSONL 对话，自动提取。参数: mode（'incremental' / 'full'）
 - `ingest_status` — 查看摄入状态
 
-### 反馈闭环
+### 反馈与推送
 - `record_feedback` — 记录经验有用/没用，影响排序。参数: problem_id, helpful, note（可选）
+- `push_feishu_weekly` — 推送本周经验摘要到飞书群。需 .env 配置 FEISHU_WEBHOOK_URL
 
 ### 反思与建议
 - `run_reflection` — 读取本周问题，LLM 反思生成规则草案，写入 rules_suggestions.md
@@ -139,6 +141,14 @@ description: >
 
 - 用户回复"记""存""好""嗯"→ 调 `save_problem`，从对话上下文提取结构化信息
 - 用户忽略 → 不操作，不重复追问
+
+### 8. 飞书推送
+
+当用户说"推送到飞书""推送周报""/devquest push"时：
+
+1. 调 `push_feishu_weekly`
+2. 展示结果："已推送到飞书：本周 X 个新问题，类型分布..."
+3. 如果返回 error（如未配置 FEISHU_WEBHOOK_URL），告知用户如何配置
 
 ## 搜索策略
 

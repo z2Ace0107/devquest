@@ -73,7 +73,8 @@ $permissions = @(
     "mcp__devquest__generate_star",
     "mcp__devquest__update_score",
     "mcp__devquest__run_reflection",
-    "mcp__devquest__get_suggestions"
+    "mcp__devquest__get_suggestions",
+    "mcp__devquest__push_feishu_weekly"
 )
 
 if (Test-Path $settings_json) {

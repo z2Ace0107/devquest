@@ -27,7 +27,7 @@ from mcp.server.fastmcp import FastMCP
 
 from backend.database import init_db, SessionLocal
 from backend.models import Problem, Project
-from backend import extractor, classifier, scorer, star_gen, vector_search, session_ingestor, rule_maker
+from backend import extractor, classifier, scorer, star_gen, vector_search, session_ingestor, rule_maker, feishu
 from backend import services
 
 # ── 启动初始化 ──────────────────────────────────────────────────
@@ -472,6 +472,49 @@ def get_suggestions() -> dict:
     包含 LLM 生成的规则、置信度、来源问题。
     """
     result = rule_maker.get_suggestions()
+    return result
+
+
+@mcp.tool()
+def push_feishu_weekly() -> dict:
+    """
+    将本周经验摘要推送到飞书群。
+
+    通过飞书自定义机器人 Webhook 发送卡片消息，
+    包含本周新增问题数、类型分布、Top 5 问题。
+    需要 .env 中配置 FEISHU_WEBHOOK_URL。
+    """
+    import os
+    from pathlib import Path as _Path
+
+    webhook_url = os.getenv("FEISHU_WEBHOOK_URL", "")
+    if not webhook_url:
+        return {"ok": False, "error": "未配置 FEISHU_WEBHOOK_URL"}
+
+    # 先跑 Rule-Maker 反思（如果本周有问题）
+    try:
+        rule_maker.run_reflection()
+    except Exception:
+        pass
+
+    # 推送周报
+    result = feishu.push_weekly_summary(webhook_url)
+
+    # 如果有规则草案，追加知识推送
+    suggestions = rule_maker.get_suggestions()
+    if suggestions.get("exists") and result.get("problem_count", 0) >= 3:
+        content = suggestions["content"]
+        # 提取摘要和规则数量
+        lines = content.split("\n")
+        summary = next((l.strip("## ") for l in lines if "模式摘要" in l), "")
+        # 推知识卡片
+        feishu.send_card(
+            webhook_url,
+            "🧠 DevQuest 团队知识推送",
+            f"本周 Reflections 已完成，{result['problem_count']} 个新问题。\n\n📎 详情见 `rules_suggestions.md`",
+            template="purple",
+        )
+
     return result
 
 

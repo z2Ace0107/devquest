@@ -1,6 +1,29 @@
 # Changelog
 
-## V3.0 — 产品化优化 (进行中 — 2026-05-19)
+## V3.1 — 零配置 + 体验闭环 (进行中 — 2026-05-20)
+
+### 飞书推送 ✅
+- 新建 `backend/feishu.py`：Webhook 卡片推送（零 SDK、零 OAuth）
+- 新增 `push_feishu_weekly` MCP tool → 工具总数 14
+- `SKILL.md`：工具数 13→14 + 飞书推送工作流 + 触发词
+- `requirements.txt` 补 `requests` 依赖
+- `.env.example` 补 `FEISHU_WEBHOOK_URL`
+
+### 工程修复 ✅
+- `session_ingestor.py`：`datetime.utcnow()` → `datetime.now(timezone.utc)`（Phase 1 遗漏）
+- `vector_search.py`：`add_to_index` 加 `logging.exception`
+- `extractor.py`：`load_dotenv()` 改为显式路径
+- `database.py`：删除 FastAPI 时代 `get_db()` 死代码
+- `HANDOFF.md`：工具表更新至 14 个 + 架构图
+
+### V3.1 计划
+1. Phase 6.1: 本地 embedding → 零 API Key
+2. Phase 6.2: DAG 上下文 → 精确率提升
+3. Phase 6.3: Hook 自动捕获 → 零操作入库
+4. Phase 6.4: 经验库健康检查
+5. Phase 6.5: README 设计决策
+
+## V3.0 — 产品化优化 (完成 — 2026-05-19)
 
 ### Phase 5: 工程完善 ✅
 - 12 个单元测试（services + vector_search），`python -m pytest tests/ -v` 全绿

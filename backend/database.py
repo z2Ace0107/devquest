@@ -89,16 +89,3 @@ def init_db():
         # 向前兼容：V3.0 新增 5 列
         _migrate_v2_columns(conn)
         conn.commit()
-
-
-# ── 依赖注入工具（供 FastAPI 路由使用）────────────────────────
-def get_db():
-    """
-    生成器函数，为每个请求提供独立的数据库会话，
-    并在请求结束后自动关闭会话。
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()

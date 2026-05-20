@@ -6,15 +6,20 @@
 
 ## 当前计划
 
-**V3.0 产品化优化** — 详细计划见 `C:\Users\Y7000p\.claude\plans\mutable-gliding-lark.md`（或 Claude Code 中输入 `/plans` 查看）。
+**V3.1 零配置 + 体验闭环** — 详细计划见 `C:\Users\Y7000p\.claude\plans\mutable-gliding-lark.md`（或 `/plans` 查看）。
 
-产品定位从"经验搜索引擎"转变为"AI 编程上下文增强层"。分 5 个 Phase 执行：
-1. ✅ Phase 1: 工程修复（utcnow 废弃 API、日志）
-2. ✅ Phase 2: 数据模型升级（environment / feedback / 时效衰减字段）
-3. ✅ Phase 3: MCP 新工具（save_problem / record_feedback / search_experience 增强）
-4. ✅ Phase 4: Skill 智能触发（错误自动搜索 / 主动提议记录）
-5. Phase 5: 单测 + README 产品定位重写 + 文档同步 ← **当前**
-6. Phase 6: 飞书连接（团队知识推送 / Bot 查询入口 / 周报推送）← 规划中
+V3.0 已完成基础设施。V3.1 目标：零 API Key、体验闭环、质量管理。
+
+### V3.1 计划（5 Phase）
+1. Phase 6.1: 本地 embedding → 零 API Key（sentence-transformers 替代阿里百炼）
+2. Phase 6.2: DAG 上下文 → 精确率 78→85%（JSONL parentUuid 链还原推理路径）
+3. Phase 6.3: Hook 自动捕获 → 零操作入库（SessionEnd Hook + save_problem）
+4. Phase 6.4: 经验库健康检查（无用/矛盾/过时检测）
+5. Phase 6.5: README 设计决策（讲自己的决策理由）
+
+### 已完成
+- ✅ Phase 1-5（工程修复 + 数据模型 + MCP 工具 + Skill + 单测 + README）
+- ✅ 飞书推送（feishu.py + push_feishu_weekly）
 
 每个 Phase 完成后 → 手动测试 → Git 提交 → 用户验证通过 → 下一步。
 
@@ -216,21 +221,37 @@ Claude 对话存储在 `~/.claude/projects/<project-slug>/<session-id>.jsonl`，
 }
 ```
 
-## MCP Tools（V1.2 目标）
+## MCP Tools（V3.0 共 14 个）
 
+### 经验检索
 | Tool | 说明 | 版本 |
 |------|------|------|
-| `search_experience` | 双通道混合搜索（向量 + FTS5 → RRF） | V1.0 |
-| `ingest_sessions` | 启动 session 增量摄入 | V1.1 |
-| `ingest_status` | 查看摄入状态 | V1.1 |
-| `extract_from_text` | 手动粘贴对话提取问题 | V1.0 |
+| `search_experience` | 双通道 RRF 混合搜索 + 环境匹配 + 时效衰减 | V3.0 |
 | `list_problems` | 按项目/技术/分数/类型筛选 | V1.0 |
 | `get_dashboard` | 统计摘要 | V1.0 |
-| `rebuild_index` | 全量重建双通道索引 | V1.0 |
-| `generate_star` | STAR 故事生成（保留不主打） | V1.0 |
-| `update_score` | 手动修改评分 | V1.0 |
+
+### 数据摄入
+| Tool | 说明 | 版本 |
+|------|------|------|
+| `save_problem` | 结构化录入（推荐） | V3.0 |
+| `extract_from_text` | 手动粘贴对话 LLM 提取 | V1.0 |
+| `ingest_sessions` | 启动 session 增量摄入 | V1.1 |
+| `ingest_status` | 查看摄入状态 | V1.1 |
+
+### 反馈与反思
+| Tool | 说明 | 版本 |
+|------|------|------|
+| `record_feedback` | 显式反馈闭环 | V3.0 |
 | `run_reflection` | 触发 Rule-Maker 反思 | V1.2 |
 | `get_suggestions` | 查看待确认规则草案 | V1.2 |
+
+### 维护与推送
+| Tool | 说明 | 版本 |
+|------|------|------|
+| `push_feishu_weekly` | 推送本周摘要到飞书 | V3.1 |
+| `rebuild_index` | 全量重建双通道索引 | V1.0 |
+| `generate_star` | STAR 故事生成 | V1.0 |
+| `update_score` | 手动修改评分 | V1.0 |
 
 ## 环境变量 (.env)
 

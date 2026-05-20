@@ -68,13 +68,14 @@ V1.0 MVP              V1.3 检索增强          V3.0 产品化            V3.1 
                                                                     周报自动推送
 ```
 
-**V3.1 规划**（Phase 6）—— DevQuest 从个人工具到团队记忆的桥：
+**V3.1（Phase 6 进行中）**—— DevQuest 从个人工具到团队记忆的桥：
 
-1. **团队知识推送**：Rule-Maker 反思发现高频共性模式 → 飞书卡片推送到团队群。个人经验中值得共享的发现，自动出圈
-2. **飞书机器人查询**：非 IDE 用户（产品经理、运维）在飞书里 @机器人 直接搜经验库。同一套 MCP 后端，不同入口
-3. **周报自动推送**：Rule-Maker 每周反思完成 → 飞书推送摘要，无需手动打开
+1. **周报自动推送**：Rule-Maker 每周反思 → 飞书卡片推送摘要，无需手动打开。**已实现** ✅
+2. **团队知识推送**：反思发现高频共性模式 → 飞书卡片推送到团队群。**已实现** ✅
+3. **飞书经验文档整理**：对 DevQuest 说"整理这周 Docker 经验" → 自动搜经验库，格式化为结构化文档推送飞书卡片 → 复制到飞书 Doc 即成个人经验总结。**规划中**
+4. **飞书机器人查询**：非 IDE 用户在飞书 @机器人 直接搜经验库。**主项目 LineMind 更适用**
 
-> 面试叙事："我判断什么值得推送给团队、什么只留在个人库——不是把所有经验都甩群里。"
+> 飞书接入全部通过 Webhook URL，零依赖、零 OAuth、零 CLI——判断场景复杂度后的最简方案。
 
 ---
 
@@ -88,7 +89,7 @@ V1.0 MVP              V1.3 检索增强          V3.0 产品化            V3.1 
                        │ MCP Protocol (JSON-RPC 2.0)
 ┌──────────────────────┴────────────────────────────────────┐
 │  MCP Server 层（跨平台通用）                                │
-│  13 tools · Service 层解耦 · 任何 MCP Client 可用          │
+│  14 tools · Service 层解耦 · 任何 MCP Client 可用          │
 │                                                            │
 │  ┌──────────┬──────────┬──────────┬──────────┐            │
 │  │ 经验检索  │ 数据摄入  │ 反馈闭环  │ 反思+维护 │            │
@@ -143,7 +144,7 @@ cp .env.example .env   # 填入 API Key
 
 ---
 
-## MCP 工具（13 个）
+## MCP 工具（14 个）
 
 ### 经验检索
 | Tool | 说明 |
@@ -165,11 +166,16 @@ cp .env.example .env   # 填入 API Key
 | --- | --- |
 | `record_feedback` | 标记经验有用/没用，影响排序权重 |
 
-### 反思与维护
+### 反思与推送
 | Tool | 说明 |
 | --- | --- |
 | `run_reflection` | Rule-Maker：LLM 分析本周问题 → 生成规则草案 |
 | `get_suggestions` | 查看待确认规则草案 |
+| `push_feishu_weekly` | 推送本周经验摘要到飞书群（Webhook） |
+
+### 维护
+| Tool | 说明 |
+| --- | --- |
 | `rebuild_index` | 全量重建 ChromaDB + FTS5 双索引 |
 | `generate_star` | STAR 面试故事生成 |
 | `update_score` | 手动调整评分 |
@@ -181,7 +187,7 @@ cp .env.example .env   # 填入 API Key
 ```
 devquest/
 ├── backend/
-│   ├── mcp_server.py         # MCP Server 入口（13 tools）
+│   ├── mcp_server.py         # MCP Server 入口（14 tools）
 │   ├── services.py           # 业务逻辑层（save/feedback）
 │   ├── extractor.py          # LLM 问题提取引擎 + 语义去重
 │   ├── classifier.py         # 技术标签自动分类

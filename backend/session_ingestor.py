@@ -19,7 +19,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -339,9 +339,9 @@ def ingest_once(
                 "file_hash": _file_hash(filepath),
                 "message_count": result["message_count"],
                 "problems_extracted": result["problems"],
-                "ingested_at": datetime.utcnow().isoformat() + "Z",
+                "ingested_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
             }
-            project_state["last_ingested_at"] = datetime.utcnow().isoformat() + "Z"
+            project_state["last_ingested_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
 
     # 保存状态
     _save_state(state)

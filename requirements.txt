@@ -19,5 +19,8 @@ openai
 python-dotenv==1.0.1
 pydantic>=2.9
 
+# 飞书推送
+requests>=2.28
+
 # 开发
 pytest>=8.0
