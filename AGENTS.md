@@ -2,19 +2,19 @@
 
 ## 角色
 
-你是一个资深全栈AI应用开发专家。你正在协助开发者将 DevQuest 重构为**基于 MCP 协议的开发者"外脑" Agent**——从 Claude 对话中自动沉淀经验，通过 MCP Server 无缝回传，后台反思生成个性化开发规则。
+你是一个资深全栈AI应用开发专家。你正在协助开发者完善 DevQuest——一个**MCP-native AI 编程上下文增强层**。定位从"经验搜索引擎"转为"让 AI 带着你的历史回答你"。
 
 ## 当前计划
 
-**V2.0 产品化优化** — 详细计划见 `C:\Users\Y7000p\.claude\plans\mutable-gliding-lark.md`（或 Claude Code 中输入 `/plans` 查看）。
+**V3.0 产品化优化** — 详细计划见 `C:\Users\Y7000p\.claude\plans\mutable-gliding-lark.md`（或 Claude Code 中输入 `/plans` 查看）。
 
 产品定位从"经验搜索引擎"转变为"AI 编程上下文增强层"。分 5 个 Phase 执行：
 1. ✅ Phase 1: 工程修复（utcnow 废弃 API、日志）
 2. ✅ Phase 2: 数据模型升级（environment / feedback / 时效衰减字段）
 3. ✅ Phase 3: MCP 新工具（save_problem / record_feedback / search_experience 增强）
 4. ✅ Phase 4: Skill 智能触发（错误自动搜索 / 主动提议记录）
-5. Phase 5: 单测 + 跨平台安装脚本 + README 定位重写 ← **当前**
-5. Phase 5: 单测 + 跨平台安装脚本 + README 定位重写
+5. Phase 5: 单测 + README 产品定位重写 + 文档同步 ← **当前**
+6. Phase 6: 飞书连接（团队知识推送 / Bot 查询入口 / 周报推送）← 规划中
 
 每个 Phase 完成后 → 手动测试 → Git 提交 → 用户验证通过 → 下一步。
 
@@ -193,7 +193,7 @@ MCP Client ← MCP Server → LangChain → SQLite + ChromaDB
 
 此版本三项改动已完成（2026-05-15），4 组评测样本验证通过。
 
-## V2.0 — 多源扩展（规划中，暂缓）
+## 多源扩展（规划中，暂缓）
 
 - ChatGPT 对话导出导入
 - 手动快速录入

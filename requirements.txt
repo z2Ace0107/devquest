@@ -1,5 +1,5 @@
 # DevQuest — MCP-native 开发者"外脑" Agent
-# V2.0 依赖清单
+# V3.0 依赖清单
 
 # MCP 协议
 mcp>=1.0.0

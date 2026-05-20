@@ -43,6 +43,10 @@ Thumbs.db
 *.env
 !.env.example
 
+# 测试
+.pytest_cache/
+tests/__pycache__/
+
 # 日志
 *.log
 logs/

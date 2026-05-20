@@ -47,7 +47,7 @@ Base = declarative_base()
 # ── Migration 辅助 ──────────────────────────────────────────────
 
 def _migrate_v2_columns(conn):
-    """V2.0 新增列：静默迁移，列已存在时跳过。"""
+    """V3.0 新增列：静默迁移，列已存在时跳过。"""
     v2_columns = [
         ("first_seen_at", "TIMESTAMP"),
         ("environment", "TEXT"),
@@ -86,7 +86,7 @@ def init_db():
             ))
         except Exception:
             pass
-        # 向前兼容：V2.0 新增 5 列
+        # 向前兼容：V3.0 新增 5 列
         _migrate_v2_columns(conn)
         conn.commit()
 

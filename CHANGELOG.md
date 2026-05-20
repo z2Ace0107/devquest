@@ -1,6 +1,12 @@
 # Changelog
 
-## V2.0 — 产品化优化 (进行中 — 2026-05-19)
+## V3.0 — 产品化优化 (进行中 — 2026-05-19)
+
+### Phase 5: 工程完善 ✅
+- 12 个单元测试（services + vector_search），`python -m pytest tests/ -v` 全绿
+- README 重写：产品思维叙事 + 飞书 V2.1 规划 + 架构图 + 产品决策表
+- Skill description 改为广覆盖（所有技术场景自动触发）
+- AGENTS.md 更新：角色重定位 + Phase 6 飞书规划
 
 ### Phase 4: Skill 智能触发 ✅
 - Skill 新增"错误自动搜索"工作流（最高优先级，遇 error 自动搜经验库，带环境匹配）
