@@ -1,6 +1,13 @@
 # Changelog
 
-## V3.1 — 零配置 + 体验闭环 (进行中 — 2026-05-20)
+## V4.0 — Agent 驱动知识工程 (进行中 — 2026-05-21)
+
+### V4.0 计划
+- 单 Agent Harness（observe → plan → evaluate → execute → remember）
+- Topic/Concept/Link 数据模型 + 双向知识图谱
+- 飞书 CLI 原生输出
+
+## V3.1 — 零配置 + 体验闭环 (完成 — 2026-05-20)
 
 ### 飞书推送 ✅
 - 新建 `backend/feishu.py`：Webhook 卡片推送（零 SDK、零 OAuth）

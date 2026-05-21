@@ -2,24 +2,29 @@
 
 ## 角色
 
-你是一个资深全栈AI应用开发专家。你正在协助开发者完善 DevQuest——一个**MCP-native AI 编程上下文增强层**。定位从"经验搜索引擎"转为"让 AI 带着你的历史回答你"。
+你是一个资深全栈AI应用开发专家。你正在协助开发者完善 DevQuest——一个 **Agent 驱动的知识工程系统**。核心是单 Agent Harness 自主管理知识生命周期，飞书 CLI 原生输出。
 
 ## 当前计划
 
-**V3.1 零配置 + 体验闭环** — 详细计划见 `C:\Users\Y7000p\.claude\plans\mutable-gliding-lark.md`（或 `/plans` 查看）。
+**V4.0 Agent 驱动知识工程** — 详细计划见 `/plans`。
 
-V3.0 已完成基础设施。V3.1 目标：零 API Key、体验闭环、质量管理。
+产品定位从"经验搜索引擎"→"AI 编程上下文增强层"→**"开发者的第二大脑"**。
 
-### V3.1 计划（5 Phase）
-1. Phase 6.1: 本地 embedding → 零 API Key（sentence-transformers 替代阿里百炼）
-2. Phase 6.2: DAG 上下文 → 精确率 78→85%（JSONL parentUuid 链还原推理路径）
-3. Phase 6.3: Hook 自动捕获 → 零操作入库（SessionEnd Hook + save_problem）
-4. Phase 6.4: 经验库健康检查（无用/矛盾/过时检测）
-5. Phase 6.5: README 设计决策（讲自己的决策理由）
+### V4.0 计划（4 Phase）
+1. Phase 4.0: **Agent 框架 + 组织能力**（harness/state/tools/memory/guardrails + Topic/Concept/Link 模型）
+2. Phase 4.1: **飞书 CLI 输出**（feishu_cli.py + compile_tool）
+3. Phase 4.2: **采集升级**（Hook 自动捕获 + DAG 上下文）
+4. Phase 4.3: **检索升级 + 健康检查**（图谱遍历 + 本地 embedding）
+
+### Agent 架构
+- **单 Agent Harness**：observe → plan → evaluate → execute → remember
+- State 三层感知：知识层 + 输出层 + 输入层
+- Policy：Claude 推理优先级（不硬编码阈值）
+- Guardrails：6 条质量约束
 
 ### 已完成
-- ✅ Phase 1-5（工程修复 + 数据模型 + MCP 工具 + Skill + 单测 + README）
-- ✅ 飞书推送（feishu.py + push_feishu_weekly）
+- ✅ V3.0 Phase 1-5（工程修复 + 数据模型 + MCP 14 tools + Skill + 单测 + README）
+- ✅ V3.1 飞书推送 + 工程修复
 
 每个 Phase 完成后 → 手动测试 → Git 提交 → 用户验证通过 → 下一步。
 
