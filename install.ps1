@@ -75,7 +75,8 @@ $permissions = @(
     "mcp__devquest__update_score",
     "mcp__devquest__run_reflection",
     "mcp__devquest__get_suggestions",
-    "mcp__devquest__push_feishu_weekly"
+    "mcp__devquest__push_feishu_weekly",
+    "mcp__devquest__run_agent"
 )
 
 if (Test-Path $settings_json) {

@@ -5,7 +5,7 @@ description: >
   适用所有技术场景：报错/异常/traceback/启动失败/环境配置/代码调试/架构决策/性能优化。
   触发词：/devquest save / /devquest 记 / 记一下 / 存一下 / 查经验 / 之前怎么修的 /
   我记得有个坑 / 搜一下历史 / 导入对话 / 扫描会话 / 经验库概览 / 分析本周问题 / 反思 / 生成STAR /
-  推送到飞书 / 推送周报。
+  推送到飞书 / 推送周报 / Agent 运行 / run agent / 执行 Agent。
 ---
 
 # DevQuest Skill

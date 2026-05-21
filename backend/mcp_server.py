@@ -29,6 +29,7 @@ from backend.database import init_db, SessionLocal
 from backend.models import Problem, Project
 from backend import extractor, classifier, scorer, star_gen, vector_search, session_ingestor, rule_maker, feishu
 from backend import services
+from backend.agent.harness import HarnessAgent
 
 # ── 启动初始化 ──────────────────────────────────────────────────
 init_db()
@@ -516,6 +517,18 @@ def push_feishu_weekly() -> dict:
         )
 
     return result
+
+
+@mcp.tool()
+def run_agent() -> dict:
+    """
+    手动触发 DevQuest Agent 执行一次认知循环。
+
+    Agent 自主观察系统状态，决定当前最值得做的事并执行。
+    返回 Agent 的决策、执行结果和当前系统状态摘要。
+    """
+    agent = HarnessAgent()
+    return agent.run()
 
 
 # ══════════════════════════════════════════════════════════════════
