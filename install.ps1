@@ -6,9 +6,10 @@ Write-Host "DevQuest — 一键安装" -ForegroundColor Cyan
 $repo_dir = $PSScriptRoot
 $venv_dir = "$repo_dir\.venv"
 $venv_python = "$venv_dir\Scripts\python.exe"
-$claude_home = "$env:USERPROFILE\.claude"
-$skills_dir = "$claude_home\skills\devquest"
-$settings_json = "$claude_home\settings.json"
+$claude_home = "$env:USERPROFILE"
+$skills_dir = "$env:USERPROFILE\.claude\skills\devquest"
+$claude_json = "$claude_home\.claude.json"
+$settings_json = "$env:USERPROFILE\.claude\settings.json"
 
 # 1. 创建虚拟环境 + 安装依赖
 Write-Host "[1/5] 安装依赖..."
@@ -49,13 +50,13 @@ $mcp_entry = @{
     }
 }
 
-if (Test-Path $settings_json) {
-    $config = Get-Content $settings_json -Raw | ConvertFrom-Json
+if (Test-Path $claude_json) {
+    $config = Get-Content $claude_json -Raw | ConvertFrom-Json
     if (-not $config.mcpServers) { $config | Add-Member -NotePropertyName mcpServers -NotePropertyValue @{} -Force }
     $config.mcpServers | Add-Member -NotePropertyName devquest -NotePropertyValue $mcp_entry.devquest -Force
-    $config | ConvertTo-Json -Depth 4 | Set-Content $settings_json
+    $config | ConvertTo-Json -Depth 4 | Set-Content $claude_json
 } else {
-    @{ mcpServers = $mcp_entry } | ConvertTo-Json -Depth 4 | Set-Content $settings_json
+    @{ mcpServers = $mcp_entry } | ConvertTo-Json -Depth 4 | Set-Content $claude_json
 }
 
 # 5. 注册 MCP 权限
