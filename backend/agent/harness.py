@@ -100,17 +100,20 @@ class HarnessAgent:
                 },
             }
 
-        # P2: Growing Topic 有实质内容 → 编译推送
+        # P2: Growing Topic 有实质内容 → 编译，若飞书 CLI 可用则推送
         growing = knowledge.get("growing_topics", [])
         if growing:
             t = growing[0]
+            cli_available = output.get("feishu_cli_available", False)
+            action_type = "compile_push" if cli_available else "compile"
             return {
-                "type": "compile",
+                "type": action_type,
                 "target": [],
                 "meta": {
                     "topic_id": t["id"],
                     "topic_name": t["title"],
                     "new_count": t.get("new_count", 0),
+                    "push_to_feishu": cli_available,
                     "reason": "growing_topic",
                 },
             }
@@ -165,10 +168,11 @@ class HarnessAgent:
             content = meta.get("content", "")
             return _tools.push_tool(title, content)
 
-        if action_type == "compile":
+        if action_type in ("compile", "compile_push"):
             topic_id = meta.get("topic_id")
             topic_name = meta.get("topic_name", "未命名主题")
-            return _tools.compile_tool(topic_id=topic_id, topic_name=topic_name)
+            push_to_feishu = meta.get("push_to_feishu", False)
+            return _tools.compile_tool(topic_id=topic_id, topic_name=topic_name, push_to_feishu=push_to_feishu)
 
         if action_type == "capture":
             text = meta.get("conversation_text", "")
@@ -191,6 +195,7 @@ class HarnessAgent:
 def _summarize_state(state: dict) -> dict:
     """压缩状态为可读摘要。"""
     k = state.get("knowledge", {})
+    o = state.get("output", {})
     return {
         "total_problems": k.get("total_problems", 0),
         "weekly_new": k.get("weekly_new", 0),
@@ -200,5 +205,6 @@ def _summarize_state(state: dict) -> dict:
         "orphan_count": k.get("orphan_count", 0),
         "total_topics": k.get("total_topics", 0),
         "growing_topics_count": len(k.get("growing_topics", [])),
-        "webhook_ready": state.get("output", {}).get("webhook_ready", False),
+        "webhook_ready": o.get("webhook_ready", False),
+        "feishu_cli_available": o.get("feishu_cli_available", False),
     }

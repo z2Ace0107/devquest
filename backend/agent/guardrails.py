@@ -59,5 +59,6 @@ def _check_organize(action: dict, state: dict) -> tuple[str, str]:
 _RULES = {
     "push": _check_push,
     "compile": _check_compile,
+    "compile_push": _check_compile,
     "organize": _check_organize,
 }

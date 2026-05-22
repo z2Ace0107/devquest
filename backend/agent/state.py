@@ -103,7 +103,10 @@ def _observe_knowledge(db) -> dict:
 def _observe_output(db) -> dict:
     """输出层状态：飞书同步和推送情况。"""
     import os
+    from backend import feishu_cli
+
     webhook_configured = bool(os.getenv("FEISHU_WEBHOOK_URL", "").startswith("https://"))
+    feishu_cli_available = feishu_cli.FeishuClient.is_configured()
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     day_ago = now - timedelta(days=1)
@@ -114,6 +117,11 @@ def _observe_output(db) -> dict:
         Topic.feishu_doc_id == None,
     ).count()
 
+    # 已有飞书文档的 Topic 数
+    synced_topics = db.query(Topic).filter(
+        Topic.feishu_doc_id != None,
+    ).count()
+
     # 最近推送
     last_push = db.query(AgentAction).filter(
         AgentAction.action_type == "push",
@@ -121,7 +129,8 @@ def _observe_output(db) -> dict:
 
     return {
         "webhook_ready": webhook_configured,
-        "feishu_cli_available": False,
+        "feishu_cli_available": feishu_cli_available,
+        "feishu_docs_synced": synced_topics,
         "pending_pushes": pending_topics,
         "last_push_at": last_push.created_at.isoformat() if last_push else None,
     }

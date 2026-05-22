@@ -140,12 +140,15 @@ def _gen_topic_summary(problems: list[Problem]) -> str:
 
 # ── compile ─────────────────────────────────────────────
 
-def compile_tool(topic_id: int = None, topic_name: str = None, problem_ids: list[int] = None) -> dict:
-    """编译 Topic → 飞书文档 Markdown。
+def compile_tool(topic_id: int = None, topic_name: str = None, problem_ids: list[int] = None,
+                 push_to_feishu: bool = False) -> dict:
+    """编译 Topic → 飞书文档 Markdown，可选推送到飞书 Doc。
 
     优先用 topic_id 从 Topic 表查找并通过 Link 表找关联 Problem；
     兼容旧接口 topic_name + problem_ids。
     """
+    from backend import feishu_cli
+
     db = SessionLocal()
     try:
         topic = None
@@ -215,6 +218,22 @@ def compile_tool(topic_id: int = None, topic_name: str = None, problem_ids: list
         if topic:
             result["feishu_doc_id"] = topic.feishu_doc_id
             result["solution_status"] = topic.solution_status
+
+        # 推送到飞书文档
+        if push_to_feishu:
+            client = feishu_cli.get_client()
+            if client and client.available:
+                if topic and topic.feishu_doc_id:
+                    doc_result = client.update_doc(topic.feishu_doc_id, topic_name, content)
+                else:
+                    doc_result = client.create_doc(topic_name, content)
+                result["feishu_push"] = doc_result
+                if doc_result.get("doc_id") and topic:
+                    topic.feishu_doc_id = doc_result["doc_id"]
+                    db.commit()
+            else:
+                result["feishu_push"] = {"error": "飞书 App ID / App Secret 未配置"}
+
         return result
     finally:
         db.close()
@@ -285,12 +304,31 @@ def health_check_tool() -> dict:
 
 def feishu_status_tool() -> dict:
     """读取飞书输出层状态。"""
+    from backend import feishu_cli
+
     webhook = os.getenv("FEISHU_WEBHOOK_URL", "")
+    cli_available = feishu_cli.FeishuClient.is_configured()
+
+    synced_docs = 0
+    if cli_available:
+        db = SessionLocal()
+        try:
+            synced_docs = db.query(Topic).filter(Topic.feishu_doc_id != None).count()
+        finally:
+            db.close()
+
+    parts = []
+    if webhook.startswith("https://"):
+        parts.append("Webhook 已配置")
+    if cli_available:
+        parts.append(f"Open API 已配置 ({synced_docs} 篇文档已同步)")
+    summary = "、".join(parts) if parts else "飞书未配置"
+
     return {
         "webhook_ready": webhook.startswith("https://"),
-        "feishu_cli_available": False,  # V4.1
-        "docs_synced": 0,
-        "summary": "飞书 Webhook 已配置" if webhook.startswith("https://") else "飞书未配置",
+        "feishu_cli_available": cli_available,
+        "docs_synced": synced_docs,
+        "summary": summary,
     }
 
 

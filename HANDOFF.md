@@ -1,6 +1,6 @@
 # DevQuest — 交接文档 (2026-05-22)
 
-## 项目状态: V4.0 Phase 3 完成
+## 项目状态: V4.0 Phase 4.1 完成
 
 ## 版本历史
 
@@ -11,6 +11,7 @@
 | V4.0 P1 | Agent 框架核心（harness/state/tools/memory/guardrails，6 文件） | ✅ |
 | V4.0 P2 | 数据模型升级（Topic/Concept/Link/AgentAction + organize 聚类 + compile topic_id） | ✅ |
 | V4.0 P3 | 统一 LLM 客户端主备切换（`llm_client.py` + 5 文件重构） | ✅ |
+| V4.0 P4.1 | 飞书 CLI 输出（`feishu_cli.py` + compile_tool push_to_feishu + state 动态检测） | ✅ |
 
 ## 当前架构
 
@@ -40,28 +41,12 @@ devquest/
 │   │   ├── __init__.py         # Agent 模块
 │   │   ├── harness.py          # 主循环 observe→plan→evaluate→execute
 │   │   ├── state.py            # 三层状态感知（知识层/输出层/输入层 + Topic数据）
-│   │   ├── tools.py            # 8 工具函数（organize/compile/search/health_check等）
-│   │   ├── memory.py           # 工作记忆 + AgentAction 持久化
-│   │   └── guardrails.py       # 6 条质量约束（push/compile/organize）
-│   ├── llm_client.py           # 统一 LLM 客户端（主备自动切换）
-│   ├── mcp_server.py           # MCP Server 入口 (15 tools)
-│   ├── extractor.py            # 问题提取引擎 + 语义去重
-│   ├── classifier.py           # 技术标签分类
-│   ├── scorer.py               # 优先级评分
-│   ├── star_gen.py             # STAR 故事生成
-│   ├── vector_search.py        # 双通道 RRF 检索 + 查询改写 + 反馈闭环
-│   ├── session_ingestor.py     # Claude JSONL 自动摄入
-│   ├── rule_maker.py           # Rule-Maker 反思引擎
-│   ├── feishu.py               # 飞书 Webhook 推送
-│   ├── services.py             # 结构化录入 + 反馈 Service 层
-│   ├── database.py             # SQLAlchemy + Migration + FTS5
-│   └── models.py               # ORM: Project/Problem/Topic/Concept/Link/AgentAction
-├── skill/
-│   └── SKILL.md                # Claude Code Skill
+│   │   ├── tools.py            # 8 工具函数（compile 支持 push_to_feishu 参数）
 ├── tests/
 │   ├── test_agent.py           # Agent 框架单测（17 条）
 │   ├── test_services.py        # Service 层单测（5 条）
-│   └── test_vector_search.py   # 检索单测（7 条）
+│   ├── test_vector_search.py   # 检索单测（7 条）
+│   └── test_feishu_cli.py      # 飞书 CLI 单测（21 条）
 ├── scripts/
 │   ├── eval_extractor.py
 │   └── smoke_test.py
@@ -151,7 +136,7 @@ FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/your-token
 ## 测试
 
 ```bash
-.venv/Scripts/python.exe -m pytest tests/ -v  # 29 tests
+.venv/Scripts/python.exe -m pytest tests/ -v  # 50 tests
 
 # 手动触发 Agent
 .venv/Scripts/python.exe -c "
@@ -165,7 +150,7 @@ print('决策:', r['decision'], '状态:', r['state'])
 
 | Phase | 内容 | 关键文件 |
 |-------|------|---------|
-| V4.1 | 飞书 CLI 输出（feishu_cli.py + compile_tool 对接飞书文档/Wiki） | `backend/feishu_cli.py` |
+| V4.1 | 飞书 CLI 输出 ✅ | `backend/feishu_cli.py` |
 | V4.2 | Hook 自动捕获（SessionEnd Hook + DAG 上下文采集） | `scripts/hook_capture.py` |
 | V4.3 | 图谱遍历检索 + 本地 embedding（sentence-transformers） | `backend/graph_search.py` |
 | V4.5 | 零 API Key（本地 embedding 替换阿里百炼） | `backend/vector_search.py` |

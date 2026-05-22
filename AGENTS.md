@@ -12,7 +12,7 @@
 
 ### V4.0 计划（4 Phase）
 1. Phase 4.0: **Agent 框架 + 组织能力**（harness/state/tools/memory/guardrails + Topic/Concept/Link 模型）✅
-2. Phase 4.1: **飞书 CLI 输出**（feishu_cli.py + compile_tool）
+2. Phase 4.1: **飞书 CLI 输出**（feishu_cli.py + compile_tool 对接飞书文档）✅
 3. Phase 4.2: **采集升级**（Hook 自动捕获 + DAG 上下文）
 4. Phase 4.3: **检索升级 + 健康检查**（图谱遍历 + 本地 embedding）
 
@@ -28,6 +28,7 @@
 - ✅ V4.0 Phase 1: Agent 框架核心（harness 6 文件 + 8 工具 + run_agent MCP tool + 17 测试）
 - ✅ V4.0 Phase 2: 数据模型升级（Topic/Concept/Link/AgentAction + organize 聚类 + compile topic_id + state Topic 感知 + memory 持久化，29 测试）
 - ✅ V4.0 Phase 3: LLM 客户端统一（`llm_client.py` 主备切换 + 5 文件去重重构）
+- ✅ V4.0 Phase 4.1: 飞书 CLI 输出（`feishu_cli.py` Feishu Open API 客户端 + compile_tool push_to_feishu + state 动态检测 + 21 测试）
 
 每个 Phase 完成后 → 手动测试 → Git 提交 → 用户验证通过 → 下一步。
 
