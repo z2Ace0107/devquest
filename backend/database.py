@@ -64,6 +64,81 @@ def _migrate_v2_columns(conn):
             pass
 
 
+# ── V4.0 Migration ──────────────────────────────────────────────
+
+def _migrate_v4_tables(conn):
+    """V4.0 新增表：Topic / Concept / Link / AgentAction。已存在则跳过。"""
+    v4_ddl = [
+        # Topic
+        ("topics", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title VARCHAR(255) NOT NULL UNIQUE,
+            summary TEXT,
+            first_seen_at TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            freshness_score FLOAT NOT NULL DEFAULT 1.0,
+            feishu_doc_id VARCHAR(255),
+            feishu_base_record_id VARCHAR(255),
+            solution_status VARCHAR(20) DEFAULT '需跟进',
+            problem_count INTEGER NOT NULL DEFAULT 0,
+            project_count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        """),
+        # Concept
+        ("concepts", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            type VARCHAR(50) NOT NULL DEFAULT '技术',
+            aliases TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        """),
+        # Link
+        ("links", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_type VARCHAR(20) NOT NULL,
+            source_id INTEGER NOT NULL,
+            target_type VARCHAR(20) NOT NULL,
+            target_id INTEGER NOT NULL,
+            relation_type VARCHAR(20) NOT NULL DEFAULT '关联',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        """),
+        # AgentAction
+        ("agent_actions", """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_type VARCHAR(50) NOT NULL,
+            target_ids TEXT,
+            result TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        """),
+    ]
+    for table_name, columns_ddl in v4_ddl:
+        try:
+            conn.execute(text(
+                f"CREATE TABLE IF NOT EXISTS {table_name} ({columns_ddl})"
+            ))
+        except Exception:
+            pass
+
+    # Link indexes
+    for idx_col in ("source_type", "target_type"):
+        try:
+            conn.execute(text(
+                f"CREATE INDEX IF NOT EXISTS idx_{idx_col} "
+                f"ON links ({idx_col}, {idx_col[:-5]}_id)"
+            ))
+        except Exception:
+            pass
+
+    # Topic FTS
+    try:
+        conn.execute(text(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS topics_fts "
+            "USING fts5(title, summary)"
+        ))
+    except Exception:
+        pass
+
+
 # ── 初始化函数 ────────────────────────────────────────────────
 def init_db():
     """
@@ -73,19 +148,20 @@ def init_db():
     from backend import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
 
-    # 创建 FTS5 全文索引虚拟表（用于双通道混合检索的关键词通道）
     with engine.connect() as conn:
+        # FTS5 关键词通道
         conn.execute(text(
             "CREATE VIRTUAL TABLE IF NOT EXISTS problems_fts "
             "USING fts5(title, description, solution)"
         ))
-        # 向前兼容：usage_count 列（V1.3 新增）
+        # 向前兼容列
         try:
             conn.execute(text(
                 "ALTER TABLE problems ADD COLUMN usage_count INTEGER DEFAULT 0"
             ))
         except Exception:
             pass
-        # 向前兼容：V3.0 新增 5 列
         _migrate_v2_columns(conn)
+        # V4.0 新表
+        _migrate_v4_tables(conn)
         conn.commit()

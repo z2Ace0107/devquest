@@ -17,6 +17,20 @@ from backend.agent import tools as _tools
 logger = logging.getLogger(__name__)
 
 
+def _build_push_content(knowledge: dict) -> str:
+    """根据当前知识层状态生成推送摘要内容。"""
+    parts = [f"本周新增 **{knowledge.get('weekly_new', 0)}** 条技术经验"]
+    if knowledge.get("total_topics", 0) > 0:
+        parts.append(f"覆盖 **{knowledge['total_topics']}** 个知识主题")
+    growing = knowledge.get("growing_topics", [])
+    if growing:
+        names = ", ".join(t["title"] for t in growing[:5])
+        parts.append(f"活跃主题: {names}")
+    parts.append("")
+    parts.append("> 由 DevQuest Agent 自动生成")
+    return "\n".join(parts)
+
+
 class HarnessAgent:
     """单 Agent Harness。每次唤醒执行一次认知循环。"""
 
@@ -73,19 +87,35 @@ class HarnessAgent:
         优先级: 组织(高价值) > 健康检查(维护) > 推送(有内容才推)
         """
         knowledge = state.get("knowledge", {})
+        output = state.get("output", {})
 
-        # P1: 有新经验 → 先组织
+        # P1: 未关联 Topic 的孤立 Problem ≥3 → 组织
         if knowledge.get("needs_organize"):
             return {
                 "type": "organize",
                 "target": [],
                 "meta": {
-                    "weekly_new": knowledge.get("weekly_new", 0),
-                    "reason": "recent_captures_trigger",
+                    "orphan_count": knowledge.get("orphan_count", 0),
+                    "reason": "orphan_problems_trigger",
                 },
             }
 
-        # P2: 低质量 > 5 条 → 提醒健康检查
+        # P2: Growing Topic 有实质内容 → 编译推送
+        growing = knowledge.get("growing_topics", [])
+        if growing:
+            t = growing[0]
+            return {
+                "type": "compile",
+                "target": [],
+                "meta": {
+                    "topic_id": t["id"],
+                    "topic_name": t["title"],
+                    "new_count": t.get("new_count", 0),
+                    "reason": "growing_topic",
+                },
+            }
+
+        # P3: 低质量 > 5 条 → 健康检查
         if knowledge.get("low_quality_count", 0) >= 5:
             return {
                 "type": "health_check",
@@ -93,7 +123,7 @@ class HarnessAgent:
                 "meta": {"low_quality": knowledge["low_quality_count"]},
             }
 
-        # P3: 过时 > 10 条 → 提醒清理
+        # P4: 过时 > 10 条 → 健康检查
         if knowledge.get("stale_count", 0) >= 10:
             return {
                 "type": "health_check",
@@ -101,15 +131,15 @@ class HarnessAgent:
                 "meta": {"stale_count": knowledge["stale_count"]},
             }
 
-        # P4: 本周有新经验 + 飞书配置了 → 推送周报
-        if (knowledge.get("weekly_new", 0) > 0
-                and state.get("output", {}).get("webhook_ready")):
+        # P5: 本周有新经验 + 飞书配置了 → 推送摘要
+        if knowledge.get("weekly_new", 0) > 0 and output.get("webhook_ready"):
             return {
                 "type": "push",
                 "target": [],
                 "meta": {
-                    "content": f"本周新增 {knowledge['weekly_new']} 条经验",
-                    "topic_count": knowledge["weekly_new"],
+                    "title": "DevQuest 本周经验摘要",
+                    "content": _build_push_content(knowledge),
+                    "topic_count": max(knowledge.get("total_topics", 0), 1),
                     "reason": "weekly_summary",
                 },
             }
@@ -136,8 +166,9 @@ class HarnessAgent:
             return _tools.push_tool(title, content)
 
         if action_type == "compile":
-            topic = meta.get("topic_name", "未命名主题")
-            return _tools.compile_tool(topic, target)
+            topic_id = meta.get("topic_id")
+            topic_name = meta.get("topic_name", "未命名主题")
+            return _tools.compile_tool(topic_id=topic_id, topic_name=topic_name)
 
         if action_type == "capture":
             text = meta.get("conversation_text", "")
@@ -166,5 +197,8 @@ def _summarize_state(state: dict) -> dict:
         "needs_organize": k.get("needs_organize", False),
         "stale": k.get("stale_count", 0),
         "low_quality": k.get("low_quality_count", 0),
+        "orphan_count": k.get("orphan_count", 0),
+        "total_topics": k.get("total_topics", 0),
+        "growing_topics_count": len(k.get("growing_topics", [])),
         "webhook_ready": state.get("output", {}).get("webhook_ready", False),
     }

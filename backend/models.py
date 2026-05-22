@@ -2,16 +2,20 @@
 """
 DevQuest — ORM 数据模型
 
-定义两个核心表:
+核心表:
 - Project（项目）: 存储项目名称与创建时间
-- Problem（问题）: 存储每个技术问题的完整信息，关联到某个项目
+- Problem（问题）: 结构化技术问题记录
+- Topic（主题）: 聚合相关问题为知识主题
+- Concept（概念）: 技术/工具/错误等概念节点
+- Link（链接）: 实体间双向关系
+- AgentAction（操作日志）: Agent 操作审计
 """
 
 from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, Integer, String, Text, Float, TIMESTAMP,
-    ForeignKey,
+    ForeignKey, Index,
 )
 from sqlalchemy.orm import relationship
 
@@ -91,9 +95,6 @@ class Problem(Base):
         return f"<Problem id={self.id} title='{self.title}'>"
 
     def to_dict(self):
-        """
-        将模型实例转为字典，方便 API 响应序列化。
-        """
         return {
             "id": self.id,
             "project_id": self.project_id,
@@ -115,3 +116,130 @@ class Problem(Base):
             "feedback_count": self.feedback_count,
             "solution_version": self.solution_version,
         }
+
+
+# ── V4.0 新增模型 ────────────────────────────────────────────
+
+
+class Topic(Base):
+    """知识主题 — 聚合同类 Problem 为可编译的知识单元。"""
+    __tablename__ = "topics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(255), nullable=False, unique=True, comment="主题名称")
+    summary = Column(Text, nullable=True, comment="LLM 维护的主题摘要")
+    first_seen_at = Column(TIMESTAMP, nullable=True, comment="首次出现时间")
+    updated_at = Column(
+        TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        nullable=False,
+        comment="最后更新时间"
+    )
+    freshness_score = Column(Float, default=1.0, nullable=False, comment="新鲜度 0-1")
+    feishu_doc_id = Column(String(255), nullable=True, comment="飞书文档 ID")
+    feishu_base_record_id = Column(String(255), nullable=True, comment="飞书多维表格记录 ID")
+    solution_status = Column(
+        String(20), default="需跟进",
+        comment="解决状态: 已解决 / 需跟进 / 已过时"
+    )
+    problem_count = Column(Integer, default=0, nullable=False, comment="关联 Problem 数")
+    project_count = Column(Integer, default=0, nullable=False, comment="跨项目数")
+    created_at = Column(
+        TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        nullable=False,
+        comment="创建时间"
+    )
+
+    def __repr__(self):
+        return f"<Topic id={self.id} title='{self.title}'>"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "summary": self.summary,
+            "first_seen_at": self.first_seen_at.isoformat() if self.first_seen_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "freshness_score": self.freshness_score,
+            "feishu_doc_id": self.feishu_doc_id,
+            "feishu_base_record_id": self.feishu_base_record_id,
+            "solution_status": self.solution_status,
+            "problem_count": self.problem_count,
+            "project_count": self.project_count,
+        }
+
+
+class Concept(Base):
+    """概念节点 — 知识图谱中的实体，可被多个 Problem/Topic 引用。"""
+    __tablename__ = "concepts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False, unique=True, comment="概念名称")
+    type = Column(
+        String(50), nullable=False, default="技术",
+        comment="概念类型: 技术 / 工具 / 错误 / 项目 / 模式"
+    )
+    aliases = Column(Text, nullable=True, comment="别名 JSON 数组")
+    created_at = Column(
+        TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        nullable=False,
+    )
+
+    def __repr__(self):
+        return f"<Concept id={self.id} name='{self.name}' type='{self.type}'>"
+
+
+class Link(Base):
+    """双向链接 — 连接知识图谱中任意两个实体。"""
+    __tablename__ = "links"
+    __table_args__ = (
+        Index("idx_source", "source_type", "source_id"),
+        Index("idx_target", "target_type", "target_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_type = Column(
+        String(20), nullable=False,
+        comment="源实体类型: Problem / Topic / Concept"
+    )
+    source_id = Column(Integer, nullable=False, comment="源实体 ID")
+    target_type = Column(
+        String(20), nullable=False,
+        comment="目标实体类型: Problem / Topic / Concept"
+    )
+    target_id = Column(Integer, nullable=False, comment="目标实体 ID")
+    relation_type = Column(
+        String(20), nullable=False, default="关联",
+        comment="关系类型: 同类 / 属于 / 依赖 / 替代 / 导致 / 关联"
+    )
+    created_at = Column(
+        TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        nullable=False,
+    )
+
+    def __repr__(self):
+        return (f"<Link {self.source_type}#{self.source_id}"
+                f" -[{self.relation_type}]-> "
+                f"{self.target_type}#{self.target_id}>")
+
+
+class AgentAction(Base):
+    """Agent 操作日志 — 审计每一次 Agent 决策与执行结果。"""
+    __tablename__ = "agent_actions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    action_type = Column(String(50), nullable=False, comment="操作类型")
+    target_ids = Column(Text, nullable=True, comment="目标 ID 列表 JSON")
+    result = Column(Text, nullable=True, comment="执行结果 JSON")
+    created_at = Column(
+        TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        nullable=False,
+    )
+
+    def __repr__(self):
+        return f"<AgentAction id={self.id} type='{self.action_type}'>"

@@ -11,7 +11,7 @@
 产品定位从"经验搜索引擎"→"AI 编程上下文增强层"→**"开发者的第二大脑"**。
 
 ### V4.0 计划（4 Phase）
-1. Phase 4.0: **Agent 框架 + 组织能力**（harness/state/tools/memory/guardrails + Topic/Concept/Link 模型）
+1. Phase 4.0: **Agent 框架 + 组织能力**（harness/state/tools/memory/guardrails + Topic/Concept/Link 模型）✅
 2. Phase 4.1: **飞书 CLI 输出**（feishu_cli.py + compile_tool）
 3. Phase 4.2: **采集升级**（Hook 自动捕获 + DAG 上下文）
 4. Phase 4.3: **检索升级 + 健康检查**（图谱遍历 + 本地 embedding）
@@ -25,6 +25,9 @@
 ### 已完成
 - ✅ V3.0 Phase 1-5（工程修复 + 数据模型 + MCP 14 tools + Skill + 单测 + README）
 - ✅ V3.1 飞书推送 + 工程修复
+- ✅ V4.0 Phase 1: Agent 框架核心（harness 6 文件 + 8 工具 + run_agent MCP tool + 17 测试）
+- ✅ V4.0 Phase 2: 数据模型升级（Topic/Concept/Link/AgentAction + organize 聚类 + compile topic_id + state Topic 感知 + memory 持久化，29 测试）
+- ✅ V4.0 Phase 3: LLM 客户端统一（`llm_client.py` 主备切换 + 5 文件去重重构）
 
 每个 Phase 完成后 → 手动测试 → Git 提交 → 用户验证通过 → 下一步。
 
@@ -261,9 +264,14 @@ Claude 对话存储在 `~/.claude/projects/<project-slug>/<session-id>.jsonl`，
 ## 环境变量 (.env)
 
 ```
-DEEPSEEK_API_KEY=sk-xxx
-DEEPSEEK_MODEL=deepseek-v4-flash
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+# LLM Primary Provider（opencode.ai / DeepSeek V4 Flash）
+LLM_PRIMARY_API_KEY=sk-xxx
+LLM_PRIMARY_MODEL=deepseek-v4-flash
+LLM_PRIMARY_BASE_URL=https://opencode.ai/zen/go/v1
+# LLM Fallback Provider（主不可用时自动降级）
+LLM_FALLBACK_API_KEY=sk-xxx
+LLM_FALLBACK_MODEL=deepseek-chat
+LLM_FALLBACK_BASE_URL=https://api.deepseek.com/v1
 EMBEDDING_API_KEY=sk-xxx
 EMBEDDING_MODEL=text-embedding-v3
 EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1

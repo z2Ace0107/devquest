@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timezone, timedelta
 
 from backend.database import SessionLocal
-from backend.models import Problem
+from backend.models import Problem, Topic, Concept, Link, AgentAction
 from backend import services, vector_search
 
 logger = logging.getLogger(__name__)
@@ -41,80 +41,181 @@ def capture_tool(conversation_text: str, project: str = None) -> dict:
 # ── organize ─────────────────────────────────────────────
 
 def organize_tool(problem_ids: list[int] = None) -> dict:
-    """聚类未归类 Problem。V4.0 MVP: 返回需要组织的信息给 Agent。
+    """聚类 Problem → Topic，创建/更新 Topic 记录 + Problem-Topic Link。
 
-    后续 V4.0 完整版会调用 Topic 聚类逻辑。当前返回待组织摘要。"""
+    分组策略: 按 tech_stack 首项分组，>=2 条经验创建一个 Topic。
+    """
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        week_ago = now - timedelta(days=7)
 
         if problem_ids:
             problems = db.query(Problem).filter(Problem.id.in_(problem_ids)).all()
         else:
-            problems = db.query(Problem).filter(Problem.created_at >= week_ago).all()
+            problems = db.query(Problem).all()
 
-        # 按 tech_stack 简单分组
-        groups = {}
+        # 按 tech_stack 第一项分组
+        groups: dict[str, list[Problem]] = {}
         for p in problems:
             tech = (p.tech_stack or "未分类").split(",")[0].strip()
-            groups.setdefault(tech, []).append(p.id)
+            groups.setdefault(tech, []).append(p)
+
+        created_topics = []
+        updated_topics = []
+
+        for tech_name, group in groups.items():
+            if len(group) < 2:
+                continue
+
+            # 查找或创建 Topic
+            topic = db.query(Topic).filter(Topic.title == tech_name).first()
+            if topic is None:
+                topic = Topic(
+                    title=tech_name,
+                    first_seen_at=min(p.first_seen_at or p.created_at for p in group),
+                    problem_count=len(group),
+                    project_count=len(set(p.project_id for p in group)),
+                    summary=_gen_topic_summary(group),
+                    freshness_score=1.0,
+                    solution_status="需跟进",
+                )
+                db.add(topic)
+                db.flush()
+                created_topics.append({"id": topic.id, "title": topic.title, "problem_count": len(group)})
+            else:
+                topic.problem_count = db.query(Problem).filter(
+                    Problem.tech_stack.like(f"{tech_name}%")
+                ).count()
+                pids = db.query(Problem.project_id).filter(
+                    Problem.tech_stack.like(f"{tech_name}%")
+                ).all()
+                topic.project_count = len(set(r[0] for r in pids))
+                topic.summary = _gen_topic_summary(group)
+                topic.updated_at = now
+                topic.freshness_score = min(1.0, topic.freshness_score + 0.1)
+                updated_topics.append({"id": topic.id, "title": topic.title, "problem_count": topic.problem_count})
+
+            # 创建 Problem → Topic link（不重复）
+            for p in group:
+                exists = db.query(Link).filter(
+                    Link.source_type == "Problem",
+                    Link.source_id == p.id,
+                    Link.target_type == "Topic",
+                    Link.target_id == topic.id,
+                    Link.relation_type == "属于",
+                ).first()
+                if not exists:
+                    db.add(Link(
+                        source_type="Problem", source_id=p.id,
+                        target_type="Topic", target_id=topic.id,
+                        relation_type="属于",
+                    ))
+
+        db.commit()
 
         return {
-            "total": len(problems),
+            "total_problems": len(problems),
             "groups": {k: len(v) for k, v in groups.items()},
-            "suggested_topics": [k for k, v in groups.items() if len(v) >= 2],
-            "summary": f"共 {len(problems)} 条待组织，可归为 {len(groups)} 个技术分组",
+            "topics_created": created_topics,
+            "topics_updated": updated_topics,
+            "topic_count": len(created_topics) + len(updated_topics),
+            "summary": (f"创建 {len(created_topics)} 个新主题, "
+                        f"更新 {len(updated_topics)} 个已有主题"),
         }
     finally:
         db.close()
 
 
+def _gen_topic_summary(problems: list[Problem]) -> str:
+    """从 Problem 列表生成简短 Topic 摘要。"""
+    titles = [p.title for p in problems if p.title]
+    types = [p.problem_type for p in problems if p.problem_type]
+    type_counts = {}
+    for t in types:
+        type_counts[t] = type_counts.get(t, 0) + 1
+    type_str = "、".join(f"{k}({v})" for k, v in sorted(type_counts.items(), key=lambda x: -x[1])[:3])
+    return (f"涵盖 {type_str}等 {len(problems)} 条经验。"
+            f"典型问题: {'; '.join(titles[:3])}")
+
+
 # ── compile ─────────────────────────────────────────────
 
-def compile_tool(topic_name: str, problem_ids: list[int] = None) -> dict:
-    """编译 Topic 内容为飞书文档 Markdown。
+def compile_tool(topic_id: int = None, topic_name: str = None, problem_ids: list[int] = None) -> dict:
+    """编译 Topic → 飞书文档 Markdown。
 
-    参数:
-        topic_name: 主题名（如 "Docker环境配置"）
-        problem_ids: 关联的 Problem ID 列表
+    优先用 topic_id 从 Topic 表查找并通过 Link 表找关联 Problem；
+    兼容旧接口 topic_name + problem_ids。
     """
     db = SessionLocal()
     try:
-        pids = problem_ids or []
-        problems = db.query(Problem).filter(Problem.id.in_(pids)).all() if pids else []
+        topic = None
+        problems = []
 
-        env_summary = _extract_env_summary(problems)
-        solution_versions = max((p.solution_version or 1 for p in problems), default=1)
-        first_seen = min((p.first_seen_at or p.created_at for p in problems), default=None)
-        last_seen = max((p.created_at for p in problems), default=None)
+        if topic_id:
+            topic = db.query(Topic).filter(Topic.id == topic_id).first()
+            if topic is None:
+                return {"error": f"Topic #{topic_id} 不存在"}
 
+            # 通过 Link 表查找关联的 Problem
+            link_rows = db.query(Link).filter(
+                Link.target_type == "Topic",
+                Link.target_id == topic_id,
+                Link.relation_type == "属于",
+            ).all()
+            pids = [l.source_id for l in link_rows]
+            if pids:
+                problems = db.query(Problem).filter(Problem.id.in_(pids)).all()
+            topic_name = topic.title
+        elif problem_ids:
+            problems = db.query(Problem).filter(Problem.id.in_(problem_ids)).all()
+            topic_name = topic_name or "未命名主题"
+            topic = db.query(Topic).filter(Topic.title == topic_name).first()
+        else:
+            return {"error": "需要提供 topic_id 或 problem_ids"}
+
+        if not problems:
+            return {"error": f"Topic '{topic_name}' 下无关联经验", "problem_count": 0}
+
+        # 编译内容
         lines = [
             f"## {topic_name}",
             "",
-            f"> 共 {len(problems)} 条经验 · 方案迭代至 v{solution_versions}",
         ]
+        if topic and topic.summary:
+            lines.append(f"> {topic.summary}")
+            lines.append("")
+
+        env_summary = _extract_env_summary(problems)
+        lines.append(f"**经验数**: {len(problems)} · **方案迭代**: v{max((p.solution_version or 1 for p in problems), default=1)}")
         if env_summary:
-            lines.append(f"> 已验证环境: {env_summary}")
+            lines.append(f"**已验证环境**: {env_summary}")
+        first_seen = min((p.first_seen_at or p.created_at for p in problems), default=None)
+        last_seen = max((p.created_at for p in problems), default=None)
         if first_seen:
-            lines.append(f"> 首次出现: {first_seen.strftime('%Y-%m-%d')}")
-        if last_seen:
-            lines.append(f"> 最近更新: {last_seen.strftime('%Y-%m-%d')}")
+            lines.append(f"**时间跨度**: {first_seen.strftime('%Y-%m-%d')} ~ {last_seen.strftime('%Y-%m-%d')}" if last_seen else "")
+        lines.append("")
+        lines.append("---")
         lines.append("")
 
-        for p in problems[:10]:
-            lines.append(f"### {p.title or '未命名'}")
+        for i, p in enumerate(problems[:20], 1):
+            lines.append(f"### {i}. {p.title or '未命名'}")
+            lines.append(f"- **类型**: {p.problem_type or '未知'}")
             lines.append(f"- **方案** (v{p.solution_version or 1}): {p.solution or '无'}")
-            lines.append(f"- **评分**: {p.priority_score or 5}/10 · **反馈**: {p.feedback_score or 0:.0%}")
+            lines.append(f"- **评分**: {p.priority_score or 5}/10 · **有用率**: {p.feedback_score:.0%}" if p.feedback_score else f"- **评分**: {p.priority_score or 5}/10")
             lines.append("")
 
         content = "\n".join(lines)
-        return {
+        result = {
             "topic_name": topic_name,
+            "topic_id": topic.id if topic else None,
             "problem_count": len(problems),
             "content": content,
             "content_length": len(content),
         }
+        if topic:
+            result["feishu_doc_id"] = topic.feishu_doc_id
+            result["solution_status"] = topic.solution_status
+        return result
     finally:
         db.close()
 

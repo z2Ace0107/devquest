@@ -1,23 +1,34 @@
-# DevQuest — 交接文档 (2026-05-16)
+# DevQuest — 交接文档 (2026-05-22)
 
-## 项目状态: V3.0 完成
+## 项目状态: V4.0 Phase 3 完成
 
 ## 版本历史
 
 | 版本 | 内容 | 状态 |
 |------|------|------|
-| V1.0 | extractor + classifier + scorer + star_gen + vector_search + FastAPI + Streamlit | ✅ |
-| V1.1 | session_ingestor + weekly_report + 搜索增强 | ✅ |
-| V1.2 | MCP Server 化 + Rule-Maker + 文档精简 + 评测脚本 | ✅ |
-| V1.3 | 查询改写 + 隐式反馈闭环 + 语义去重 | ✅ |
-| V3.0 | 项目更名为 DevQuest + 一键安装 + Skill 快捷命令 + 评测扩至 4 样本 | ✅ |
+| V1.0–V1.3 | extractor/classifier/scorer/star_gen/search/session_ingestor | ✅ |
+| V3.0 | 项目更名为 DevQuest + 一键安装 + Skill + MCP 14 tools | ✅ |
+| V4.0 P1 | Agent 框架核心（harness/state/tools/memory/guardrails，6 文件） | ✅ |
+| V4.0 P2 | 数据模型升级（Topic/Concept/Link/AgentAction + organize 聚类 + compile topic_id） | ✅ |
+| V4.0 P3 | 统一 LLM 客户端主备切换（`llm_client.py` + 5 文件重构） | ✅ |
 
 ## 当前架构
 
 ```
-MCP Client ← MCP Server (11 tools) → LangChain + DeepSeek → SQLite + ChromaDB
-                  ↑                         ↑
-            Skill 包装层             查询改写 / 反馈闭环 / 语义去重
+MCP Client (Claude Code)
+    │
+    ▼
+MCP Server (15 tools) ──→ Harness Agent (observe→plan→evaluate→execute→remember)
+    │                              │
+    ├── search_experience ←────────┤ 8 Agent Tools
+    ├── save_problem              ├── observe / capture / organize / compile
+    ├── ingest_sessions           ├── search / health_check / feishu_status / push
+    ├── push_feishu_weekly        │
+    ├── run_reflection            ▼
+    ├── run_agent          llm_client.py (Primary: opencode.ai / Fallback: api.deepseek.com)
+    └── ...                          │
+                              SQLite + ChromaDB + FTS5
+                              (Problem/Topic/Concept/Link/AgentAction)
 ```
 
 ## 当前文件结构
@@ -25,31 +36,40 @@ MCP Client ← MCP Server (11 tools) → LangChain + DeepSeek → SQLite + Chrom
 ```
 devquest/
 ├── backend/
-│   ├── mcp_server.py          # MCP Server 入口 (11 tools)
-│   ├── extractor.py           # 问题提取引擎 + 语义去重 (_merge_problem)
-│   ├── classifier.py          # 技术标签分类
-│   ├── scorer.py              # 优先级评分
-│   ├── star_gen.py            # STAR 故事生成
-│   ├── vector_search.py       # 双通道 RRF 检索 + 查询改写 + 反馈闭环
-│   ├── session_ingestor.py    # Claude JSONL 自动摄入
-│   ├── rule_maker.py          # Rule-Maker 反思引擎
-│   ├── database.py / models.py
+│   ├── agent/
+│   │   ├── __init__.py         # Agent 模块
+│   │   ├── harness.py          # 主循环 observe→plan→evaluate→execute
+│   │   ├── state.py            # 三层状态感知（知识层/输出层/输入层 + Topic数据）
+│   │   ├── tools.py            # 8 工具函数（organize/compile/search/health_check等）
+│   │   ├── memory.py           # 工作记忆 + AgentAction 持久化
+│   │   └── guardrails.py       # 6 条质量约束（push/compile/organize）
+│   ├── llm_client.py           # 统一 LLM 客户端（主备自动切换）
+│   ├── mcp_server.py           # MCP Server 入口 (15 tools)
+│   ├── extractor.py            # 问题提取引擎 + 语义去重
+│   ├── classifier.py           # 技术标签分类
+│   ├── scorer.py               # 优先级评分
+│   ├── star_gen.py             # STAR 故事生成
+│   ├── vector_search.py        # 双通道 RRF 检索 + 查询改写 + 反馈闭环
+│   ├── session_ingestor.py     # Claude JSONL 自动摄入
+│   ├── rule_maker.py           # Rule-Maker 反思引擎
+│   ├── feishu.py               # 飞书 Webhook 推送
+│   ├── services.py             # 结构化录入 + 反馈 Service 层
+│   ├── database.py             # SQLAlchemy + Migration + FTS5
+│   └── models.py               # ORM: Project/Problem/Topic/Concept/Link/AgentAction
 ├── skill/
-│   └── SKILL.md               # Claude Code Skill（/devquest save 等）
+│   └── SKILL.md                # Claude Code Skill
+├── tests/
+│   ├── test_agent.py           # Agent 框架单测（17 条）
+│   ├── test_services.py        # Service 层单测（5 条）
+│   └── test_vector_search.py   # 检索单测（7 条）
 ├── scripts/
-│   ├── eval_extractor.py      # 提取引擎评测（多样本）
-│   └── smoke_test.py          # 冒烟测试
-├── sample_conversations/      # 4 组评测样本
-│   ├── mock_web_app_debug.txt # Docker/Nginx/SQLAlchemy/架构
-│   ├── react_table_bug.txt    # React 渲染性能
-│   ├── api_migration_issue.txt# REST→GraphQL 迁移
-│   ├── cicd_deploy_issue.txt  # CI/CD 流水线优化
-│   └── expected.json          # 人工标注预期
-├── data/                      # SQLite + ChromaDB（不入 git）
-├── install.ps1                # 一键安装脚本
-├── AGENTS.md                  # AI 开发规范
-├── CHANGELOG.md               # 版本记录
-└── README.md                  # 产品视角说明
+│   ├── eval_extractor.py
+│   └── smoke_test.py
+├── install.ps1                 # 一键安装
+├── AGENTS.md                   # AI 开发规范（当前）
+├── CHANGELOG.md                # 版本记录（当前）
+├── HANDOFF.md                  # 本文档
+└── README.md                   # 产品视角说明
 ```
 
 ## 安装方式
@@ -58,27 +78,43 @@ devquest/
 ```powershell
 .\install.ps1
 ```
-自动完成：pip 依赖 → MCP Server 注册 → Skill 安装 → 权限配置。然后在 `.env` 里填 API Key，重启 Claude Code。
 
-**手动安装（macOS/Linux）：**
+**手动安装：**
 1. `pip install -r requirements.txt`
-2. 创建 `.env` 填入 API Key
-3. 在 `~/.claude.json` 注册 MCP Server
-4. `cp skill/SKILL.md ~/.claude/skills/devquest/SKILL.md`
-5. 重启 Claude Code
+2. 创建 `.env` 填入 API Key（见下方环境变量）
+3. `cp skill/SKILL.md ~/.claude/skills/devquest/SKILL.md`
+4. 在 `~/.claude.json` 注册 MCP Server
+5. 在 `~/.claude/settings.json` 注册权限
+6. 重启 Claude Code
 
-## 配置管理（用户级，不在本仓库）
+## 环境变量 (.env)
 
-- MCP Server 配置: `~/.claude.json` → `mcpServers.devquest`
-- MCP 权限: `~/.claude/settings.json` → `mcp__devquest__*`（11 个）
-- Skill: `~/.claude/skills/devquest/SKILL.md`
+```
+# LLM Primary Provider（opencode.ai DeepSeek V4 Flash）
+LLM_PRIMARY_API_KEY=sk-your-key
+LLM_PRIMARY_BASE_URL=https://opencode.ai/zen/go/v1
+LLM_PRIMARY_MODEL=deepseek-v4-flash
 
-## 14 个 MCP Tools
+# LLM Fallback Provider（旧 DeepSeek API，主不可用时自动降级）
+LLM_FALLBACK_API_KEY=sk-your-key
+LLM_FALLBACK_BASE_URL=https://api.deepseek.com/v1
+LLM_FALLBACK_MODEL=deepseek-v4-flash
+
+# Embedding（阿里百炼）
+EMBEDDING_API_KEY=sk-your-key
+EMBEDDING_MODEL=text-embedding-v3
+EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+
+# 飞书推送（可选）
+FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/your-token
+```
+
+## 15 个 MCP Tools
 
 | Tool | 说明 |
 |------|------|
-| `search_experience` | 查询改写 + 双通道 RRF 检索 + 环境匹配 + 时效衰减 |
-| `save_problem` | 结构化录入（推荐，跳过 LLM 提取） |
+| `search_experience` | 双通道 RRF 检索 + 环境匹配 + 时效衰减 |
+| `save_problem` | 结构化录入（推荐） |
 | `extract_from_text` | 手动导入对话（LLM 提取） |
 | `ingest_sessions` | 自动摄入 Claude 对话 |
 | `ingest_status` | 摄入状态 |
@@ -91,53 +127,45 @@ devquest/
 | `rebuild_index` | 重建索引 |
 | `generate_star` | STAR 故事 |
 | `update_score` | 修改评分 |
+| `run_agent` | **V4.0 新增** 手动触发 Agent 认知循环 |
 
-## Skill 快捷命令
+## V4.0 Agent 架构要点
 
-| 命令 | 效果 |
-|------|------|
-| `/devquest save` | 自动从当前对话提取问题入库（自动推断项目名） |
-| `/devquest 记` | 同上 |
-| 说"查经验 XXX" | 搜索历史经验 |
-| 说"经验库概览" | 查看统计摘要 |
-| `/devquest save 项目名` | 指定项目名入库 |
+**单 Agent Harness 循环**: observe → plan → evaluate → execute → remember
 
-## V3.0 新增特性
+**决策优先级**:
+1. 孤儿 Problem ≥ 3 → organize（聚类成 Topic + 创建 Link）
+2. Growing Topic 有实质更新 → compile（生成飞书文档内容）
+3. 低质量 > 5 条 → health_check
+4. 过期 > 10 条 → health_check
+5. 本周有新经验 + 飞书配置 → push 摘要
 
-### 查询改写 (`_rewrite_query()`)
-- 去除中英文口语填充词，提取技术关键词
-- 纯规则引擎，零延迟零成本
-- 改写词在 `_debug.rewritten_query` 中可观测
+**6 条 Guardrails**:
+- 推送内容过短 (<50 字) → 阻止
+- Topic < 2 条经验 → 不编译飞书文档
+- 上次推送 < 2h → 降频
+- 飞书文档连续 3 次无人访问 → 降优先级
+- LLM 摘要 < 50 字 → 重新生成
+- 编译内容无实质变更 → 不推送
 
-### 隐式反馈闭环
-- Problem 新增 `usage_count` 字段
-- STAR 生成时自动 +1，RRF 融合时高频文档获得最多 30% 额外权重
-- `search_experience` 返回改写词 + 记录曝光
+## 测试
 
-### 语义去重 (`search_similar()` + `_merge_problem()`)
-- 新问题入库前与已有库做向量相似度匹配
-- 余弦距离 < 0.125 视为重复，合并而非新建
-- 合并策略：追加 attempts、替换更优 solution、合并 tech_stack
+```bash
+.venv/Scripts/python.exe -m pytest tests/ -v  # 29 tests
 
-## 评测数据 (2026-05-16)
+# 手动触发 Agent
+.venv/Scripts/python.exe -c "
+from backend.agent.harness import HarnessAgent
+r = HarnessAgent().run()
+print('决策:', r['decision'], '状态:', r['state'])
+"
+```
 
-提取引擎在 4 个对话样本（13 个预期问题）上：
+## 待办（V4.1–V4.3）
 
-| 指标 | 数值 |
-|------|------|
-| 平均召回率 | 83% |
-| 平均精确率 | 78% |
-| 平均类型准确率 | 85% |
-| 最强单样本 | 召回率 100% / 精确率 100% (api_migration_issue) |
-
-## 仓库
-
-- GitHub: `https://github.com/z2Ace0107/devquest`
-- 父仓库 `z2Ace0107/claude` 中也包含一份副本
-
-## 待办
-
-| # | 任务 | 说明 |
-|---|------|------|
-| - | 使用数据更新 | 开发 Agent 项目期间用 `/devquest save` 积累真实数据后，更新 README 中的"已沉淀 XX 条" |
-| - | Agent 项目交叉引用 | Agent 主项目 README 加一句"历史方案检索复用 DevQuest RRF 方案" |
+| Phase | 内容 | 关键文件 |
+|-------|------|---------|
+| V4.1 | 飞书 CLI 输出（feishu_cli.py + compile_tool 对接飞书文档/Wiki） | `backend/feishu_cli.py` |
+| V4.2 | Hook 自动捕获（SessionEnd Hook + DAG 上下文采集） | `scripts/hook_capture.py` |
+| V4.3 | 图谱遍历检索 + 本地 embedding（sentence-transformers） | `backend/graph_search.py` |
+| V4.5 | 零 API Key（本地 embedding 替换阿里百炼） | `backend/vector_search.py` |

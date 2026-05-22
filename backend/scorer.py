@@ -14,23 +14,14 @@ DevQuest — 优先级评分模块
 4. 技术栈广度 — 涉及的技术数量
 """
 
-import json
-import os
-from typing import Optional
-
 from dotenv import load_dotenv
 load_dotenv()
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.database import SessionLocal
 from backend.models import Problem
-
-# ── DeepSeek API 配置 ──────────────────────────────────────────
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "your-deepseek-api-key")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+from backend.llm_client import get_llm
 
 # ── 维度权重（可配置）───────────────────────────────────────────
 DIMENSION_WEIGHTS = {
@@ -58,22 +49,10 @@ SYSTEM_PROMPT = """你是一个资深技术评估专家。请根据问题信息�
 {"complexity": 7, "tortuosity": 6, "impact": 8, "tech_breadth": 5, "total": 7}"""
 
 
-# ── LLM 客户端 ──────────────────────────────────────────────────
-_llm: Optional[ChatOpenAI] = None
+# ── LLM 客户端（统一） ──────────────────────────────────
 
 
-def _get_llm() -> ChatOpenAI:
-    global _llm
-    if _llm is None:
-        _llm = ChatOpenAI(
-            model=DEEPSEEK_MODEL,
-            api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_BASE_URL,
-            temperature=0.2,
-        )
-    return _llm
-
-
+# ── 评分函数 ────────────────────────────────────────────────────
 # ── 核心评分函数 ───────────────────────────────────────────────
 
 def score_problem(
@@ -104,7 +83,7 @@ def _llm_score(
     title: str, description: str, attempts: str, solution: str
 ) -> dict:
     """调用 LLM 进行四维度评分。"""
-    llm = _get_llm()
+    llm = get_llm(temperature=0.2)
 
     # 构建评分请求
     parts = []

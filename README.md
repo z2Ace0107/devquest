@@ -121,7 +121,7 @@ V1.0 MVP              V1.3 检索增强          V3.0 产品化            V3.1 
 ### 环境要求
 
 - Python 3.10+
-- DeepSeek API Key（LLM）
+- LLM API Key（通过 opencode.ai 等兼容 OpenAI 格式的 provider）
 - 阿里百炼 API Key（Embedding）
 
 ### 一键安装（Windows）

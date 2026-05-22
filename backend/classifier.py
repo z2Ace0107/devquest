@@ -9,22 +9,14 @@ DevQuest — 技术标签自动分类
 - 规则兜底: _rule_based_classify()
 """
 
-import os
-from typing import Optional
-
 from dotenv import load_dotenv
 load_dotenv()
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.database import SessionLocal
 from backend.models import Problem
-
-# ── DeepSeek API 配置 ──────────────────────────────────────────
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "your-deepseek-api-key")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+from backend.llm_client import get_llm
 
 # ── 已知技术栈词表（用于标准化）─────────────────────────────────
 KNOWN_TECH = {
@@ -56,22 +48,6 @@ SYSTEM_PROMPT = """你是一个技术分类专家。请根据问题信息，输�
 {"tech_stack": "Python,FastAPI,Docker", "problem_type": "环境配置"}"""
 
 
-# ── LLM 客户端（单例延迟初始化）─────────────────────────────────
-_llm: Optional[ChatOpenAI] = None
-
-
-def _get_llm() -> ChatOpenAI:
-    global _llm
-    if _llm is None:
-        _llm = ChatOpenAI(
-            model=DEEPSEEK_MODEL,
-            api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_BASE_URL,
-            temperature=0.1,
-        )
-    return _llm
-
-
 # ── 核心分类函数 ───────────────────────────────────────────────
 
 def classify_problem(
@@ -100,7 +76,7 @@ def classify_problem(
 
 def _llm_classify(title: str, description: str, solution: str) -> tuple[str, str]:
     """调用 LLM 进行分类。"""
-    llm = _get_llm()
+    llm = get_llm(temperature=0.1)
     user_prompt = (
         f"请对以下技术问题进行分类：\n\n"
         f"标题：{title}\n"

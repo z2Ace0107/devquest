@@ -10,10 +10,8 @@ DevQuest — Rule-Maker 反思引擎
 """
 
 import json
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -21,16 +19,11 @@ from dotenv import load_dotenv
 
 load_dotenv(BASE_DIR / ".env")
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.database import SessionLocal
 from backend.models import Problem
-
-# ── 配置 ───────────────────────────────────────────────────────
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+from backend.llm_client import get_llm
 
 SUGGESTIONS_FILE = BASE_DIR / "rules_suggestions.md"
 
@@ -63,20 +56,6 @@ SYSTEM_PROMPT = """你是一个资深技术导师，负责分析开发者一周�
 
 只输出 JSON，不要任何解释。"""
 
-# ── LLM 客户端 ──────────────────────────────────────────────────
-_llm: Optional[ChatOpenAI] = None
-
-
-def _get_llm() -> ChatOpenAI:
-    global _llm
-    if _llm is None:
-        _llm = ChatOpenAI(
-            model=DEEPSEEK_MODEL,
-            api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_BASE_URL,
-            temperature=0.3,
-        )
-    return _llm
 
 
 # ── 数据查询 ───────────────────────────────────────────────────
@@ -157,7 +136,7 @@ def run_reflection(project_name: Optional[str] = None) -> dict:
     problems_text = _format_problems_for_reflection(problems)
     week_label = _week_label()
 
-    llm = _get_llm()
+    llm = get_llm(temperature=0.3)
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(

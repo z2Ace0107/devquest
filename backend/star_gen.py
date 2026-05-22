@@ -14,22 +14,16 @@ DevQuest — STAR 故事生成模块
 """
 
 import json
-import os
 from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.database import SessionLocal
 from backend.models import Problem
-
-# ── DeepSeek API 配置 ──────────────────────────────────────────
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "your-deepseek-api-key")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+from backend.llm_client import get_llm
 
 # ── 系统提示词 ──────────────────────────────────────────────────
 SYSTEM_PROMPT = """你是一个面试辅导专家。请根据给定的技术问题记录，生成一个面试用的 STAR 故事。
@@ -50,22 +44,6 @@ SYSTEM_PROMPT = """你是一个面试辅导专家。请根据给定的技术问�
 }
 
 只输出 JSON，不要任何解释。"""
-
-
-# ── LLM 客户端 ──────────────────────────────────────────────────
-_llm: Optional[ChatOpenAI] = None
-
-
-def _get_llm() -> ChatOpenAI:
-    global _llm
-    if _llm is None:
-        _llm = ChatOpenAI(
-            model=DEEPSEEK_MODEL,
-            api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_BASE_URL,
-            temperature=0.7,  # 稍高温度，让叙述更自然
-        )
-    return _llm
 
 
 # ── 核心生成函数 ───────────────────────────────────────────────
@@ -132,7 +110,7 @@ def _generate_star_text(
     title: str, description: str, attempts: str, solution: str
 ) -> dict:
     """调用 LLM 生成 STAR 故事。"""
-    llm = _get_llm()
+    llm = get_llm(temperature=0.3)
 
     # 构建上下文
     parts = []

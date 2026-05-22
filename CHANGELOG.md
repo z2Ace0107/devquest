@@ -2,10 +2,27 @@
 
 ## V4.0 — Agent 驱动知识工程 (进行中 — 2026-05-21)
 
-### V4.0 计划
+### Phase 2: 数据模型升级 ✅
+- 新增 Topic/Concept/Link/AgentAction 4 个 ORM 模型
+- `database.py`：V4 migration + topics_fts 全文索引
+- `tools.py`：organize_tool 升级为 Topic 聚类（创建/更新 Topic + Link）
+- `tools.py`：compile_tool 支持 topic_id 查询（通过 Link 表关联 Problem）
+- `state.py`：新增 Topic 级别感知（growing_topics / stale_topics / orphan_count）
+- `memory.py`：AgentAction 持久化到 DB（跨 session 记忆）
+- `harness.py`：_plan 优先 orphan→organize，新增 growing_topic→compile 路径
+- 测试 29/29 通过
+
+### Phase 3: 统一 LLM 客户端主备切换 ✅
+- 新增 `backend/llm_client.py`：主备 Provider 自动降级（Primary: opencode.ai DeepSeek V4 Flash, Fallback: 旧 DeepSeek API）
+- 重构 5 个后端文件（extractor/classifier/scorer/rule_maker/star_gen），消除重复的 `_get_llm()` 单例
+- 主用完后 5 分钟冷却后自动切备用，Provider 不可用时不影响主流程
+- `.env.example` 更新新配置格式，旧 DEEPSEEK_* 变量不再使用
+
+### Phase 1: Agent 框架核心 ✅
 - 单 Agent Harness（observe → plan → evaluate → execute → remember）
-- Topic/Concept/Link 数据模型 + 双向知识图谱
-- 飞书 CLI 原生输出
+- 6 文件：harness/state/tools/memory/guardrails/__init__
+- 8 工具函数 + 6 条 Guardrails 约束
+- MCP `run_agent` tool（第 15 个 tool）
 
 ## V3.1 — 零配置 + 体验闭环 (完成 — 2026-05-20)
 
