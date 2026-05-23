@@ -221,18 +221,17 @@ def compile_tool(topic_id: int = None, topic_name: str = None, problem_ids: list
 
         # 推送到飞书文档
         if push_to_feishu:
-            client = feishu_cli.get_client()
-            if client and client.available:
+            if feishu_cli.is_available():
                 if topic and topic.feishu_doc_id:
-                    doc_result = client.update_doc(topic.feishu_doc_id, topic_name, content)
+                    doc_result = feishu_cli.update_doc(topic.feishu_doc_id, topic_name, content)
                 else:
-                    doc_result = client.create_doc(topic_name, content)
+                    doc_result = feishu_cli.create_doc(topic_name, content)
                 result["feishu_push"] = doc_result
                 if doc_result.get("doc_id") and topic:
                     topic.feishu_doc_id = doc_result["doc_id"]
                     db.commit()
             else:
-                result["feishu_push"] = {"error": "飞书 App ID / App Secret 未配置"}
+                result["feishu_push"] = {"error": "lark-cli 未配置，请先运行 lark-cli auth login"}
 
         return result
     finally:
@@ -307,7 +306,7 @@ def feishu_status_tool() -> dict:
     from backend import feishu_cli
 
     webhook = os.getenv("FEISHU_WEBHOOK_URL", "")
-    cli_available = feishu_cli.FeishuClient.is_configured()
+    cli_available = feishu_cli.is_available()
 
     synced_docs = 0
     if cli_available:
@@ -321,7 +320,7 @@ def feishu_status_tool() -> dict:
     if webhook.startswith("https://"):
         parts.append("Webhook 已配置")
     if cli_available:
-        parts.append(f"Open API 已配置 ({synced_docs} 篇文档已同步)")
+        parts.append(f"lark-cli 已认证 ({synced_docs} 篇文档已同步)")
     summary = "、".join(parts) if parts else "飞书未配置"
 
     return {

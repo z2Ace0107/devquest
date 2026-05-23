@@ -106,7 +106,7 @@ def _observe_output(db) -> dict:
     from backend import feishu_cli
 
     webhook_configured = bool(os.getenv("FEISHU_WEBHOOK_URL", "").startswith("https://"))
-    feishu_cli_available = feishu_cli.FeishuClient.is_configured()
+    feishu_cli_available = feishu_cli.is_available()
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     day_ago = now - timedelta(days=1)
