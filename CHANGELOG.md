@@ -1,6 +1,12 @@
 # Changelog
 
-## V4.0 — Agent 驱动知识工程 (进行中 — 2026-05-21)
+## V4.0 — Agent 驱动知识工程 (完成 — 2026-05-23)
+
+### Phase 1: Agent 框架核心 ✅
+- 单 Agent Harness（observe → plan → evaluate → execute → remember）
+- 6 文件：harness/state/tools/memory/guardrails/__init__
+- 8 工具函数 + 6 条 Guardrails 约束
+- MCP `run_agent` tool（第 15 个 tool）
 
 ### Phase 2: 数据模型升级 ✅
 - 新增 Topic/Concept/Link/AgentAction 4 个 ORM 模型
@@ -18,11 +24,19 @@
 - 主用完后 5 分钟冷却后自动切备用，Provider 不可用时不影响主流程
 - `.env.example` 更新新配置格式，旧 DEEPSEEK_* 变量不再使用
 
-### Phase 1: Agent 框架核心 ✅
-- 单 Agent Harness（observe → plan → evaluate → execute → remember）
-- 6 文件：harness/state/tools/memory/guardrails/__init__
-- 8 工具函数 + 6 条 Guardrails 约束
-- MCP `run_agent` tool（第 15 个 tool）
+### Phase 4.1: 飞书 CLI 输出 ✅
+- 新增 `backend/feishu_cli.py`：封装官方 lark-cli（@larksuite/cli），子进程调用实现飞书文档创建/更新
+- `compile_tool` 新增 `push_to_feishu` 参数，编译后可自动推送至飞书文档
+- `state.py`：`feishu_cli_available` 动态检测（`lark-cli auth status`）
+- `harness.py`：growing_topic 命中且飞书可用时 auto `compile_push`
+- `guardrails.py`：`compile_push` 纳入 compile 约束规则
+- `.env.example`：`FEISHU_APP_ID`/`FEISHU_APP_SECRET` → lark-cli 安装引导
+- 新增 11 条单测（is_available / create_doc / update_doc）
+- 测试总数 40/40 通过
+
+### 工程清理 ✅
+- `star_gen.py`：删除遗留的旧 `_get_llm()` 死代码和未使用的 import
+- 删除 `docker-compose.yml` / `Dockerfile` / `docker-entrypoint.sh`（项目已是 MCP-native 架构）
 
 ## V3.1 — 零配置 + 体验闭环 (完成 — 2026-05-20)
 

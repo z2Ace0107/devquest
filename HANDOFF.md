@@ -42,11 +42,29 @@ devquest/
 │   │   ├── harness.py          # 主循环 observe→plan→evaluate→execute
 │   │   ├── state.py            # 三层状态感知（知识层/输出层/输入层 + Topic数据）
 │   │   ├── tools.py            # 8 工具函数（compile 支持 push_to_feishu 参数）
+│   │   ├── memory.py           # 工作记忆 + AgentAction 持久化
+│   │   └── guardrails.py       # 6 条质量约束（push/compile/organize）
+│   ├── llm_client.py           # 统一 LLM 客户端（主备自动切换）
+│   ├── mcp_server.py           # MCP Server 入口 (15 tools)
+│   ├── extractor.py            # 问题提取引擎 + 语义去重
+│   ├── classifier.py           # 技术标签分类
+│   ├── scorer.py               # 优先级评分
+│   ├── star_gen.py             # STAR 故事生成
+│   ├── vector_search.py        # 双通道 RRF 检索 + 查询改写 + 反馈闭环
+│   ├── session_ingestor.py     # Claude JSONL 自动摄入
+│   ├── rule_maker.py           # Rule-Maker 反思引擎
+│   ├── feishu.py               # 飞书 Webhook 推送
+│   ├── feishu_cli.py           # 飞书 lark-cli 封装（文档创建/更新）
+│   ├── services.py             # 结构化录入 + 反馈 Service 层
+│   ├── database.py             # SQLAlchemy + Migration + FTS5
+│   └── models.py               # ORM: Project/Problem/Topic/Concept/Link/AgentAction
+├── skill/
+│   └── SKILL.md                # Claude Code Skill
 ├── tests/
 │   ├── test_agent.py           # Agent 框架单测（17 条）
 │   ├── test_services.py        # Service 层单测（5 条）
 │   ├── test_vector_search.py   # 检索单测（7 条）
-│   └── test_feishu_cli.py      # 飞书 CLI 单测（21 条）
+│   └── test_feishu_cli.py      # 飞书 CLI 单测（11 条）
 ├── scripts/
 │   ├── eval_extractor.py
 │   └── smoke_test.py
@@ -120,7 +138,7 @@ FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/your-token
 
 **决策优先级**:
 1. 孤儿 Problem ≥ 3 → organize（聚类成 Topic + 创建 Link）
-2. Growing Topic 有实质更新 → compile（生成飞书文档内容）
+2. Growing Topic 有实质更新 → compile（若 lark-cli 可用则 compile_push 自动推送飞书文档）
 3. 低质量 > 5 条 → health_check
 4. 过期 > 10 条 → health_check
 5. 本周有新经验 + 飞书配置 → push 摘要
@@ -136,7 +154,7 @@ FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/your-token
 ## 测试
 
 ```bash
-.venv/Scripts/python.exe -m pytest tests/ -v  # 50 tests
+.venv/Scripts/python.exe -m pytest tests/ -v  # 40 tests
 
 # 手动触发 Agent
 .venv/Scripts/python.exe -c "

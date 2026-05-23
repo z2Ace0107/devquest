@@ -28,7 +28,7 @@
 - ✅ V4.0 Phase 1: Agent 框架核心（harness 6 文件 + 8 工具 + run_agent MCP tool + 17 测试）
 - ✅ V4.0 Phase 2: 数据模型升级（Topic/Concept/Link/AgentAction + organize 聚类 + compile topic_id + state Topic 感知 + memory 持久化，29 测试）
 - ✅ V4.0 Phase 3: LLM 客户端统一（`llm_client.py` 主备切换 + 5 文件去重重构）
-- ✅ V4.0 Phase 4.1: 飞书 CLI 输出（`feishu_cli.py` Feishu Open API 客户端 + compile_tool push_to_feishu + state 动态检测 + 21 测试）
+- ✅ V4.0 Phase 4.1: 飞书 CLI 输出（`feishu_cli.py` lark-cli 子进程封装 + compile_tool push_to_feishu + state 动态检测 + 11 测试）
 
 每个 Phase 完成后 → 手动测试 → Git 提交 → 用户验证通过 → 下一步。
 
