@@ -4,12 +4,16 @@
 通过官方 lark-cli（@larksuite/cli）操作飞书文档。
 认证由 lark-cli 自身管理（config init + auth login），
 本模块仅做子进程调用和输出解析。
+
+v1 API 使用 --markdown 直接写入 Markdown 内容；
+v2 API 的 --content 是指令式修改，不适合场景。故使用默认 v1。
 """
 
 import json
 import logging
 import os
 import shutil
+import subprocess
 import time
 from typing import Optional
 
@@ -77,9 +81,6 @@ def _run_lark(args: list[str], input_text: str = "", timeout: int = 60) -> dict:
         return {"ok": True, "raw": out}
 
 
-import subprocess
-
-
 def is_available() -> bool:
     """检查 lark-cli 是否已安装并认证（结果缓存 5 分钟）。"""
     global _available_cache, _available_cache_time
@@ -90,6 +91,31 @@ def is_available() -> bool:
     _available_cache = "error" not in result
     _available_cache_time = now
     return _available_cache
+
+
+def _extract_doc(result: dict, title: str) -> dict:
+    """从 lark-cli 响应中提取文档 ID 和 URL。
+
+    v1 响应: doc_id, doc_url
+    v2 响应: data.document.document_id, data.document.url
+    """
+    data = result.get("data", {})
+
+    # v2 格式
+    doc = data.get("document", {})
+    doc_id = doc.get("document_id") or data.get("document_id", "")
+    doc_url = doc.get("url") or data.get("url", "")
+
+    # v1 格式
+    if not doc_id:
+        doc_id = data.get("doc_id", result.get("doc_id", ""))
+    if not doc_url:
+        doc_url = data.get("doc_url", result.get("doc_url", ""))
+
+    if not doc_url and doc_id:
+        doc_url = f"https://{_FEISHU_DOMAIN}/docx/{doc_id}"
+
+    return {"doc_id": doc_id, "url": doc_url, "title": title}
 
 
 def create_doc(title: str, content_md: str) -> dict:
@@ -104,7 +130,6 @@ def create_doc(title: str, content_md: str) -> dict:
     """
     result = _run_lark([
         "docs", "+create",
-        "--api-version", "v2",
         "--title", title,
         "--markdown", "-",
     ], input_text=content_md)
@@ -112,15 +137,8 @@ def create_doc(title: str, content_md: str) -> dict:
     if "error" in result:
         return result
 
-    data = result.get("data", {})
-    doc = data.get("document", {})
-    doc_id = doc.get("document_id") or data.get("document_id", "")
-    doc_url = doc.get("url") or data.get("url", "")
-    if not doc_url and doc_id:
-        doc_url = f"https://{_FEISHU_DOMAIN}/docx/{doc_id}"
-
-    logger.info("飞书文档创建成功: %s (%s)", title, doc_id)
-    return {"doc_id": doc_id, "url": doc_url, "title": title}
+    logger.info("飞书文档创建成功: %s", title)
+    return _extract_doc(result, title)
 
 
 def update_doc(doc_id: str, title: str, content_md: str) -> dict:
@@ -136,7 +154,6 @@ def update_doc(doc_id: str, title: str, content_md: str) -> dict:
     """
     result = _run_lark([
         "docs", "+update",
-        "--api-version", "v2",
         "--doc", doc_id,
         "--markdown", "-",
         "--new-title", title,

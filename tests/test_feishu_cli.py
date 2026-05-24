@@ -49,14 +49,12 @@ def test_is_available_cached(mock_run):
 # ── create_doc ────────────────────────────────────────
 
 @patch("backend.feishu_cli.subprocess.run")
-def test_create_doc_success(mock_run):
+def test_create_doc_v1_response(mock_run):
     mock_run.return_value = _mock_run(0, json.dumps({
-        "code": 0,
+        "ok": True,
         "data": {
-            "document": {
-                "document_id": "DocABC123",
-                "url": "https://feishu.cn/docx/DocABC123",
-            }
+            "doc_id": "DocABC123",
+            "doc_url": "https://feishu.cn/docx/DocABC123",
         }
     }))
 
@@ -69,37 +67,40 @@ def test_create_doc_success(mock_run):
 
 
 @patch("backend.feishu_cli.subprocess.run")
-def test_create_doc_uses_title_flag(mock_run):
+def test_create_doc_v2_response(mock_run):
     mock_run.return_value = _mock_run(0, json.dumps({
-        "code": 0,
-        "data": {"document": {"document_id": "DocXYZ", "url": "https://feishu.cn/docx/DocXYZ"}}
+        "ok": True,
+        "data": {
+            "document": {
+                "document_id": "DocXYZ789",
+                "url": "https://feishu.cn/docx/DocXYZ789",
+            }
+        }
     }))
 
-    md = "## Docker 经验\n\n- 容器启动报错\n- 镜像构建失败"
-    result = feishu_cli.create_doc("Docker 经验", md)
+    result = feishu_cli.create_doc("V2 Test", "content")
 
-    assert result["doc_id"] == "DocXYZ"
-    call_args = mock_run.call_args
-    cmd = call_args.args[0]
-    assert "--title" in cmd
-    idx = cmd.index("--title")
-    assert cmd[idx + 1] == "Docker 经验"
-    input_text = call_args.kwargs.get("input", "")
-    assert "<title>" not in input_text
-    assert "容器启动报错" in input_text
+    assert result["doc_id"] == "DocXYZ789"
+    assert result["url"] == "https://feishu.cn/docx/DocXYZ789"
 
 
 @patch("backend.feishu_cli.subprocess.run")
-def test_create_doc_no_format_flag(mock_run):
+def test_create_doc_uses_title_flag(mock_run):
     mock_run.return_value = _mock_run(0, json.dumps({
-        "code": 0,
-        "data": {"document": {"document_id": "Doc1", "url": "https://feishu.cn/docx/Doc1"}}
+        "ok": True, "data": {"doc_id": "D1", "doc_url": "https://feishu.cn/docx/D1"}
     }))
 
-    feishu_cli.create_doc("标题", "内容")
+    result = feishu_cli.create_doc("Docker 经验", "- 容器启动报错\n- 镜像构建失败")
 
+    assert result["doc_id"] == "D1"
     cmd = mock_run.call_args.args[0]
+    assert "--title" in cmd
+    idx = cmd.index("--title")
+    assert cmd[idx + 1] == "Docker 经验"
     assert "--format" not in cmd
+    assert "--api-version" not in cmd
+    input_text = mock_run.call_args.kwargs.get("input", "")
+    assert "<title>" not in input_text
 
 
 @patch("backend.feishu_cli.subprocess.run")
@@ -120,7 +121,7 @@ def test_create_doc_not_installed(mock_run):
 
 @patch("backend.feishu_cli.subprocess.run")
 def test_update_doc_success(mock_run):
-    mock_run.return_value = _mock_run(0, json.dumps({"code": 0}))
+    mock_run.return_value = _mock_run(0, json.dumps({"ok": True}))
 
     result = feishu_cli.update_doc("DocABC123", "更新标题", "## 新内容")
 
@@ -129,28 +130,18 @@ def test_update_doc_success(mock_run):
     cmd = mock_run.call_args.args[0]
     assert "docs" in cmd
     assert "+update" in cmd
+    assert "--new-title" in cmd
+    assert "--mode" in cmd
 
 
 @patch("backend.feishu_cli.subprocess.run")
-def test_update_doc_uses_new_title_flag(mock_run):
-    mock_run.return_value = _mock_run(0, json.dumps({"code": 0}))
+def test_update_doc_no_title_in_content(mock_run):
+    mock_run.return_value = _mock_run(0, json.dumps({"ok": True}))
 
-    result = feishu_cli.update_doc("DocABC", "新标题", "## 正文")
+    feishu_cli.update_doc("DocABC", "新标题", "## 正文")
 
-    cmd = mock_run.call_args.args[0]
-    assert "--new-title" in cmd
-    idx = cmd.index("--new-title")
-    assert cmd[idx + 1] == "新标题"
     input_text = mock_run.call_args.kwargs.get("input", "")
     assert "<title>" not in input_text
-
-
-@patch("backend.feishu_cli.subprocess.run")
-def test_update_doc_no_format_flag(mock_run):
-    mock_run.return_value = _mock_run(0, json.dumps({"code": 0}))
-
-    feishu_cli.update_doc("Doc1", "标题", "内容")
-
     cmd = mock_run.call_args.args[0]
     assert "--format" not in cmd
 
