@@ -30,6 +30,7 @@ from backend.models import Problem, Project
 from backend import extractor, classifier, scorer, star_gen, vector_search, session_ingestor, rule_maker, feishu
 from backend import services
 from backend.agent.harness import HarnessAgent
+from backend import llm_client
 
 # ── 启动初始化 ──────────────────────────────────────────────────
 init_db()
@@ -529,6 +530,55 @@ def run_agent() -> dict:
     """
     agent = HarnessAgent()
     return agent.run()
+
+
+@mcp.tool()
+def llm_status() -> dict:
+    """
+    查看 LLM 提供商状态和额度通知。
+
+    返回 Primary/Fallback 两个提供商的可用性，
+    以及是否有待处理的额度耗尽通知需要用户确认。
+    当 go 额度用完后，此 tool 会显示通知，用户可通过
+    acknowledge_quota 确认是否切换至直连 Fallback。
+    """
+    status = llm_client.get_llm_status()
+
+    notification = llm_client.get_quota_notification()
+    if notification:
+        status["action_required"] = "额度耗尽通知待确认"
+        status["how_to_resolve"] = (
+            "调用 acknowledge_quota(continue_fallback=True) 同意切换至直连 DeepSeek API，"
+            "或 acknowledge_quota(continue_fallback=False) 拒绝并等待 Primary 恢复"
+        )
+
+    return status
+
+
+@mcp.tool()
+def acknowledge_quota(continue_fallback: bool = True) -> dict:
+    """
+    确认 LLM 额度耗尽通知。
+
+    当 go（opencode.ai）额度用完后，系统会暂停自动切换并发出通知。
+    调用此 tool 确认你的决策：
+
+    - continue_fallback=True: 同意切换至直连 DeepSeek API（Fallback）
+    - continue_fallback=False: 不同意，等待 Primary 恢复后再用
+
+    参数:
+        continue_fallback: 是否使用 Fallback，默认 True
+    """
+    notification = llm_client.get_quota_notification()
+    if notification is None:
+        return {"message": "当前无待处理的额度通知", "status": "idle"}
+
+    llm_client.acknowledge_quota(continue_fallback)
+    return {
+        "acknowledged": True,
+        "decision": "使用 Fallback" if continue_fallback else "等待 Primary 恢复",
+        "current_status": llm_client.get_llm_status(),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════

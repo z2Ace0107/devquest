@@ -133,6 +133,7 @@ def _observe_output(db) -> dict:
         "docs_synced": synced_topics,
         "pending_pushes": pending_topics,
         "last_push_at": last_push.created_at.isoformat() if last_push else None,
+        "llm": _observe_llm(),
     }
 
 
@@ -147,4 +148,18 @@ def _observe_input(db) -> dict:
         "recent_captures": recent,
         "hook_active": False,  # V4.2 升级
         "last_manual_save": None,
+    }
+
+
+def _observe_llm() -> dict:
+    """LLM 层状态：提供商切换和额度通知。"""
+    from backend import llm_client
+    status = llm_client.get_llm_status()
+    notification = llm_client.get_quota_notification()
+    return {
+        "active_provider": llm_client.get_active_provider(),
+        "primary_available": status["primary"]["available"],
+        "fallback_available": status["fallback"]["available"],
+        "pending_notification": notification is not None,
+        "notification": notification,
     }
