@@ -8,13 +8,20 @@
 
 import json
 import logging
+import os
 import shutil
-import subprocess
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 _LARK_CMD = None
+_FEISHU_DOMAIN = os.getenv("FEISHU_DOMAIN", "bytedance.feishu.cn")
+
+# is_available() 缓存（5 分钟 TTL）
+_available_cache: Optional[bool] = None
+_available_cache_time: float = 0
+_CACHE_TTL = 300
 
 
 def _find_lark_cmd() -> list[str]:
@@ -36,11 +43,11 @@ def _find_lark_cmd() -> list[str]:
         _LARK_CMD = [npx, "@larksuite/cli@latest"]
         return _LARK_CMD
 
-    _LARK_CMD = ["lark-cli"]  # 未安装时的占位，让 _run_lark 报清晰错误
+    _LARK_CMD = ["lark-cli"]
     return _LARK_CMD
 
 
-def _run_lark(args: list[str], input_text: str = "") -> dict:
+def _run_lark(args: list[str], input_text: str = "", timeout: int = 60) -> dict:
     """运行 lark-cli 命令并解析 JSON 输出。"""
     cmd = _find_lark_cmd() + args
     try:
@@ -49,7 +56,7 @@ def _run_lark(args: list[str], input_text: str = "") -> dict:
             input=input_text,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=timeout,
             encoding="utf-8",
         )
     except FileNotFoundError:
@@ -61,7 +68,6 @@ def _run_lark(args: list[str], input_text: str = "") -> dict:
         err = proc.stderr.strip() or proc.stdout.strip()
         return {"error": err[:500]}
 
-    # 解析 JSON 输出
     out = proc.stdout.strip()
     if not out:
         return {"ok": True}
@@ -71,16 +77,19 @@ def _run_lark(args: list[str], input_text: str = "") -> dict:
         return {"ok": True, "raw": out}
 
 
+import subprocess
+
+
 def is_available() -> bool:
-    """检查 lark-cli 是否已安装并认证。"""
-    result = _run_lark(["auth", "status"])
-    return "error" not in result
-
-
-def _reset_cmd():
-    """重置缓存的 lark-cli 命令路径（测试用）。"""
-    global _LARK_CMD
-    _LARK_CMD = None
+    """检查 lark-cli 是否已安装并认证（结果缓存 5 分钟）。"""
+    global _available_cache, _available_cache_time
+    now = time.time()
+    if _available_cache is not None and (now - _available_cache_time) < _CACHE_TTL:
+        return _available_cache
+    result = _run_lark(["auth", "status"], timeout=10)
+    _available_cache = "error" not in result
+    _available_cache_time = now
+    return _available_cache
 
 
 def create_doc(title: str, content_md: str) -> dict:
@@ -93,28 +102,22 @@ def create_doc(title: str, content_md: str) -> dict:
     返回:
         {"doc_id": str, "url": str, "title": str}
     """
-    # 构建完整 Markdown：lark-cli docs +create 的 --markdown 需要
-    # Lark-flavored Markdown，用 <title> 标签指定标题
-    full_md = f"<title>{title}</title>\n{content_md}"
-
     result = _run_lark([
         "docs", "+create",
         "--api-version", "v2",
+        "--title", title,
         "--markdown", "-",
-        "--format", "json",
-    ], input_text=full_md)
+    ], input_text=content_md)
 
     if "error" in result:
         return result
 
-    # 解析输出，获取文档 ID 和 URL
-    # lark-cli 返回 {code, data: {document: {document_id, url, ...}}}
     data = result.get("data", {})
     doc = data.get("document", {})
     doc_id = doc.get("document_id") or data.get("document_id", "")
     doc_url = doc.get("url") or data.get("url", "")
     if not doc_url and doc_id:
-        doc_url = f"https://bytedance.feishu.cn/docx/{doc_id}"
+        doc_url = f"https://{_FEISHU_DOMAIN}/docx/{doc_id}"
 
     logger.info("飞书文档创建成功: %s (%s)", title, doc_id)
     return {"doc_id": doc_id, "url": doc_url, "title": title}
@@ -131,8 +134,6 @@ def update_doc(doc_id: str, title: str, content_md: str) -> dict:
     返回:
         {"doc_id": str, "url": str, "title": str}
     """
-    full_md = f"<title>{title}</title>\n{content_md}"
-
     result = _run_lark([
         "docs", "+update",
         "--api-version", "v2",
@@ -140,12 +141,19 @@ def update_doc(doc_id: str, title: str, content_md: str) -> dict:
         "--markdown", "-",
         "--new-title", title,
         "--mode", "overwrite",
-        "--format", "json",
-    ], input_text=full_md)
+    ], input_text=content_md)
 
     if "error" in result:
         return result
 
-    doc_url = f"https://bytedance.feishu.cn/docx/{doc_id}"
+    doc_url = f"https://{_FEISHU_DOMAIN}/docx/{doc_id}"
     logger.info("飞书文档已更新: %s (%s)", title, doc_id)
     return {"doc_id": doc_id, "url": doc_url, "title": title}
+
+
+def _reset_cmd():
+    """重置缓存的 lark-cli 命令路径和可用性状态（测试用）。"""
+    global _LARK_CMD, _available_cache, _available_cache_time
+    _LARK_CMD = None
+    _available_cache = None
+    _available_cache_time = 0
