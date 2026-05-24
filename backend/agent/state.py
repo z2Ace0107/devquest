@@ -130,7 +130,7 @@ def _observe_output(db) -> dict:
     return {
         "webhook_ready": webhook_configured,
         "feishu_cli_available": feishu_cli_available,
-        "feishu_docs_synced": synced_topics,
+        "docs_synced": synced_topics,
         "pending_pushes": pending_topics,
         "last_push_at": last_push.created_at.isoformat() if last_push else None,
     }
