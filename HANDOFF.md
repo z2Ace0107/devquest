@@ -1,6 +1,24 @@
-# DevQuest — 交接文档 (2026-05-22)
+# DevQuest — 交接文档 (2026-05-24)
 
-## 项目状态: V4.0 Phase 4.1 完成
+## 项目状态: V4.3 代码审查修复（进行中）
+
+详细优化计划见 `plans/v4.3-optimization.md`
+
+### 🔴 必须修的 Bug（5 个）
+1. guardrails._check_compile() 检查 `problem_count` 但 harness 传 `new_count` → compile 被阻止
+2. extractor.py 飞书归档 URL 是未插值 f-string
+3. rule_maker.py 用 `p.get("project")` 但 `to_dict()` 返回 `"project_name"`
+4. vector_search.py SQL 拼接注入风险
+5. services.py `usage_count +=10/-2` 语义扭曲
+
+### 🟡 架构优化（7 个）
+6. `_plan()` 从规则引擎升级为 LLM 推理决策
+7. DAG 上下文接入搜索或砍掉
+8. 飞书归档改为软标记
+9. Hook 守护进程简化
+10. mcp_server.py 拆分
+11. `_probe_llm()` 缓存
+12. `_graph_expand()` 批量查询
 
 ## 版本历史
 
@@ -12,6 +30,7 @@
 | V4.0 P2 | 数据模型升级（Topic/Concept/Link/AgentAction + organize 聚类 + compile topic_id） | ✅ |
 | V4.0 P3 | 统一 LLM 客户端主备切换（`llm_client.py` + 5 文件重构） | ✅ |
 | V4.0 P4.1 | 飞书 CLI 输出（`feishu_cli.py` + compile_tool push_to_feishu + state 动态检测） | ✅ |
+| V4.0 P4.2 | Hook 自动捕获 + DAG 上下文（`hook_capture.py` + 4 新 MCP tools） | ✅ |
 
 ## 当前架构
 
@@ -19,17 +38,18 @@
 MCP Client (Claude Code)
     │
     ▼
-MCP Server (15 tools) ──→ Harness Agent (observe→plan→evaluate→execute→remember)
+MCP Server (21 tools) ──→ Harness Agent (observe→plan→evaluate→execute→remember)
     │                              │
-    ├── search_experience ←────────┤ 8 Agent Tools
-    ├── save_problem              ├── observe / capture / organize / compile
-    ├── ingest_sessions           ├── search / health_check / feishu_status / push
+    ├── search_experience ←────────┤ 9 Agent Tools
+    ├── save_problem              ├── auto_ingest / observe / capture / organize
+    ├── ingest_sessions           ├── compile / search / health_check / feishu_status / push
     ├── push_feishu_weekly        │
     ├── run_reflection            ▼
     ├── run_agent          llm_client.py (Primary: opencode.ai / Fallback: api.deepseek.com)
-    └── ...                          │
-                              SQLite + ChromaDB + FTS5
-                              (Problem/Topic/Concept/Link/AgentAction)
+    ├── hook_status/start/stop         │
+    └── ...                    SQLite + ChromaDB + FTS5
+                               (Problem/Topic/Concept/Link/AgentAction)
+         Hook Daemon ──→ data/hook_state.json ──→ Agent State 读取
 ```
 
 ## 当前文件结构
@@ -64,10 +84,13 @@ devquest/
 │   ├── test_agent.py           # Agent 框架单测（17 条）
 │   ├── test_services.py        # Service 层单测（5 条）
 │   ├── test_vector_search.py   # 检索单测（7 条）
-│   └── test_feishu_cli.py      # 飞书 CLI 单测（11 条）
+│   ├── test_feishu_cli.py      # 飞书 CLI 单测（14 条）
+│   ├── test_llm_client.py      # LLM 客户端单测（16 条）
+│   └── test_hook_capture.py    # V4.2 新增：Hook 捕获单测（22 条）
 ├── scripts/
 │   ├── eval_extractor.py
-│   └── smoke_test.py
+│   ├── smoke_test.py
+│   └── hook_capture.py       # V4.2 新增：Hook 后台守护进程
 ├── install.ps1                 # 一键安装
 ├── AGENTS.md                   # AI 开发规范（当前）
 ├── CHANGELOG.md                # 版本记录（当前）
@@ -112,7 +135,7 @@ EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/your-token
 ```
 
-## 15 个 MCP Tools
+## 21 个 MCP Tools
 
 | Tool | 说明 |
 |------|------|
@@ -130,13 +153,20 @@ FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/your-token
 | `rebuild_index` | 重建索引 |
 | `generate_star` | STAR 故事 |
 | `update_score` | 修改评分 |
-| `run_agent` | **V4.0 新增** 手动触发 Agent 认知循环 |
+| `run_agent` | 手动触发 Agent 认知循环 |
+| `llm_status` | V4.1 LLM 提供商状态 + 额度通知 |
+| `acknowledge_quota` | V4.1 确认 LLM 额度耗尽决策 |
+| `hook_status` | **V4.2** Hook 自动捕获运行状态 |
+| `start_hook` | **V4.2** 启动 Hook 后台守护进程 |
+| `stop_hook` | **V4.2** 停止 Hook 后台守护进程 |
+| `get_dag_context` | **V4.2** 查看 DAG 上下文（工作目录/分支） |
 
 ## V4.0 Agent 架构要点
 
 **单 Agent Harness 循环**: observe → plan → evaluate → execute → remember
 
 **决策优先级**:
+0. Hook 检测到待摄入会话 → auto_ingest（V4.2 新增，最高优先级）
 1. 孤儿 Problem ≥ 3 → organize（聚类成 Topic + 创建 Link）
 2. Growing Topic 有实质更新 → compile（若 lark-cli 可用则 compile_push 自动推送飞书文档）
 3. 低质量 > 5 条 → health_check
@@ -154,7 +184,7 @@ FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/your-token
 ## 测试
 
 ```bash
-.venv/Scripts/python.exe -m pytest tests/ -v  # 40 tests
+.venv/Scripts/python.exe -m pytest tests/ -v  # 80 tests
 
 # 手动触发 Agent
 .venv/Scripts/python.exe -c "
@@ -164,11 +194,18 @@ print('决策:', r['decision'], '状态:', r['state'])
 "
 ```
 
-## 待办（V4.1–V4.3）
+## 待办（V4.3–V4.5）
 
-| Phase | 内容 | 关键文件 |
-|-------|------|---------|
-| V4.1 | 飞书 CLI 输出 ✅ | `backend/feishu_cli.py` |
-| V4.2 | Hook 自动捕获（SessionEnd Hook + DAG 上下文采集） | `scripts/hook_capture.py` |
-| V4.3 | 图谱遍历检索 + 本地 embedding（sentence-transformers） | `backend/graph_search.py` |
-| V4.5 | 零 API Key（本地 embedding 替换阿里百炼） | `backend/vector_search.py` |
+| Phase | 内容 | 状态 | 关键文件 |
+|-------|------|------|---------|
+| V4.3 🔴 | 5 个 Bug 修复 | 进行中 | guardrails/extractor/rule_maker/vector_search/services |
+| V4.3 🟡 | Agent LLM 推理决策 | 待开始 | harness.py |
+| V4.3 🟡 | DAG 接入搜索 boost | 待开始 | state.py, vector_search.py |
+| V4.3 🟡 | 飞书归档软标记 | 待开始 | extractor.py |
+| V4.3 🟡 | Hook 简化 | 待开始 | hook_capture.py |
+| V4.3 🟡 | mcp_server 拆分 | 待开始 | mcp_server.py |
+| V4.3 🟡 | _probe_llm 缓存 | 待开始 | llm_client.py |
+| V4.3 🟡 | 图谱批量查询 | 待开始 | vector_search.py |
+| V4.3 🟢 | 死代码清理 | 待开始 | classifier/star_gen |
+| V4.3 🟢 | config.py 集中配置 | 待开始 | 新增文件 |
+| V4.5 | 零 API Key（本地 embedding） | 待开始 | vector_search.py |

@@ -401,8 +401,12 @@ def search(
     # ── 补全文档内容 ─────────────────────────────────────────
     results = _enrich_results(fused)
 
+    # ── 图谱遍历扩展：沿 Link 关系发现相关经验 ───────────────
+    graph_expanded = _graph_expand(fused, k)
+
     return {
         "results": results,
+        "graph_related": graph_expanded,
         "_debug": {
             "original_query": query_text,
             "rewritten_query": rewritten,
@@ -410,6 +414,7 @@ def search(
             "keyword": keyword_results[:k],
             "fused": fused,
             "rrf_k": RRF_K,
+            "graph_expanded_count": len(graph_expanded),
         },
     }
 
@@ -684,12 +689,104 @@ def _enrich_results(fused: list[dict]) -> list[dict]:
         for item in fused:
             pid = item["problem_id"]
             item["document"] = id_to_doc.get(pid, "")
-            # 将 RRF 分数映射为 0-1 距离，兼容前端 (1 - distance) 计算
-            # RRF 通常 0.01-0.05，映射到 0-0.5 的"距离"
             item["distance"] = round(1.0 / (1.0 + item["rrf_score"] * 100), 4)
     finally:
         db.close()
     return fused
+
+
+# ══════════════════════════════════════════════════════════════════
+# 图谱遍历扩展 (V4.3)
+# ══════════════════════════════════════════════════════════════════
+
+def _graph_expand(fused: list[dict], k: int) -> list[dict]:
+    """
+    沿知识图谱 Link 关系扩展搜索结果。
+
+    对每个 Top 结果:
+    1. 查找其所属 Topic
+    2. 找到同一 Topic 下的其他 Problem（兄弟节点）
+    3. 返回兄弟节点作为"相关经验"，附带关系说明
+
+    遍历深度 1 跳，仅扩展至兄弟 Problem（同 Topic 内），
+    不做递归遍历以避免图爆炸。
+    """
+    if not fused:
+        return []
+
+    from backend.models import Link, Topic
+
+    db = SessionLocal()
+    try:
+        top_pids = [item["problem_id"] for item in fused[:max(k, 3)]]
+        seen_siblings = {pid for pid in top_pids}  # 避免重复
+        graph_results = []
+
+        for item in fused[:max(k, 3)]:
+            pid = item["problem_id"]
+
+            # 步骤 1: 查找此 Problem 所属的 Topic
+            links = db.query(Link).filter(
+                Link.source_type == "Problem",
+                Link.source_id == pid,
+                Link.relation_type == "属于",
+                Link.target_type == "Topic",
+            ).all()
+
+            for link in links:
+                topic_id = link.target_id
+                topic = db.query(Topic).filter(Topic.id == topic_id).first()
+                topic_title = topic.title if topic else "未知主题"
+
+                # 步骤 2: 找到同一 Topic 下的兄弟 Problem
+                sibling_links = db.query(Link).filter(
+                    Link.target_type == "Topic",
+                    Link.target_id == topic_id,
+                    Link.relation_type == "属于",
+                    Link.source_type == "Problem",
+                ).limit(5).all()
+
+                for slink in sibling_links:
+                    sibling_pid = slink.source_id
+                    if sibling_pid in seen_siblings:
+                        continue
+                    seen_siblings.add(sibling_pid)
+
+                    sibling = db.query(Problem).filter(Problem.id == sibling_pid).first()
+                    if not sibling:
+                        continue
+
+                    # 图谱扩展结果权重偏低，排在主结果之后
+                    graph_score = round(item["rrf_score"] * 0.3, 6)
+
+                    graph_results.append({
+                        "problem_id": sibling_pid,
+                        "title": sibling.title or "",
+                        "tech_stack": sibling.tech_stack or "",
+                        "priority_score": sibling.priority_score or 5,
+                        "rrf_score": graph_score,
+                        "graph_relation": {
+                            "via_problem_id": pid,
+                            "via_title": item.get("title", ""),
+                            "topic_name": topic_title,
+                            "relation": "同属话题",
+                        },
+                        "sources": ["graph"],
+                        "distance": round(1.0 / (1.0 + graph_score * 100), 4),
+                    })
+
+                    if len(graph_results) >= k:
+                        break
+
+                if len(graph_results) >= k:
+                    break
+
+            if len(graph_results) >= k:
+                break
+
+        return graph_results
+    finally:
+        db.close()
 
 
 # ══════════════════════════════════════════════════════════════════

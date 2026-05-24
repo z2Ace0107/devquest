@@ -11,6 +11,7 @@ DevQuest — MCP Server
 """
 
 import logging
+import json
 import os
 import sys
 from pathlib import Path
@@ -38,6 +39,23 @@ init_db()
 # 确保 ChromaDB 持久化目录存在
 chroma_dir = Path(__file__).resolve().parent.parent / "data" / "chroma_db"
 chroma_dir.mkdir(parents=True, exist_ok=True)
+DATA_DIR = chroma_dir.parent
+
+# ── Hook 守护进程自动启动 ─────────────────────────────────────────
+_scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
+if str(_scripts_dir) not in sys.path:
+    sys.path.insert(0, str(_scripts_dir))
+try:
+    import hook_capture
+    if not hook_capture._is_daemon_running():
+        hook_capture.start_hook_daemon()
+        logging.getLogger(__name__).info("Hook 守护进程已自动启动")
+except ImportError:
+    hook_capture = None
+    logging.getLogger(__name__).warning("hook_capture 模块未找到，请检查 scripts/ 目录")
+except Exception as e:
+    hook_capture = None
+    logging.getLogger(__name__).warning("Hook 自动启动失败: %s", e)
 
 # ── MCP Server ──────────────────────────────────────────────────
 mcp = FastMCP(
@@ -578,6 +596,124 @@ def acknowledge_quota(continue_fallback: bool = True) -> dict:
         "acknowledged": True,
         "decision": "使用 Fallback" if continue_fallback else "等待 Primary 恢复",
         "current_status": llm_client.get_llm_status(),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════
+# V4.2 — Hook 自动捕获工具
+# ══════════════════════════════════════════════════════════════════
+
+@mcp.tool()
+def hook_status() -> dict:
+    """
+    查看 Hook 自动捕获引擎的运行状态。
+
+    返回 Hook 是否在后台运行、已摄入会话数、待处理会话数、
+    DAG 上下文摘要等。
+
+    零操作目标的核心：Hook 在后台自动监听会话结束并入库。
+    """
+    if hook_capture is None:
+        return {"error": "hook_capture 模块未加载", "running": False}
+
+    state = hook_capture.get_hook_state()
+    return {
+        "running": state.get("running", False),
+        "pid": state.get("pid"),
+        "started_at": state.get("started_at"),
+        "last_scan_at": state.get("last_scan_at"),
+        "sessions_scanned": state.get("sessions_scanned", 0),
+        "sessions_ingested": state.get("sessions_ingested", 0),
+        "pending_sessions": state.get("pending_sessions", 0),
+        "last_ingested_session": state.get("last_ingested_session"),
+        "dag_context_summary": _summarize_dag_for_tool(state.get("dag_context", {})),
+        "errors": state.get("errors", [])[-5:],
+    }
+
+
+@mcp.tool()
+def start_hook() -> dict:
+    """
+    启动 Hook 自动捕获引擎（后台守护进程）。
+
+    Hook 启动后会持续监控 Claude 会话文件，
+    检测到会话结束后自动触发经验摄入。
+    状态变更通过数据文件（data/hook_state.json）供 Agent 和 MCP 读取。
+
+    零操作：启动后无需任何手动操作，全自动运行。
+    """
+    if hook_capture is None:
+        return {"ok": False, "error": "hook_capture 模块未加载"}
+
+    result = hook_capture.start_hook_daemon()
+    return result
+
+
+@mcp.tool()
+def stop_hook() -> dict:
+    """
+    停止 Hook 自动捕获引擎。
+
+    发送停止信号给后台守护进程，等待其安全退出。
+    """
+    if hook_capture is None:
+        return {"ok": False, "error": "hook_capture 模块未加载"}
+
+    result = hook_capture.stop_hook_daemon()
+    return result
+
+
+@mcp.tool()
+def get_dag_context() -> dict:
+    """
+    查看 DAG（有向无环图）上下文。
+
+    返回从会话中收集的工作目录、git 分支、文件变更关系等信息。
+    用于增强搜索上下文和知识关联。
+    """
+    if hook_capture is None:
+        state = _read_hook_state_direct()
+    else:
+        state = hook_capture.get_hook_state()
+
+    dag = state.get("dag_context", {})
+    return _format_dag_for_tool(dag)
+
+
+def _read_hook_state_direct() -> dict:
+    """直接读取 hook_state.json（无需 hook_capture 模块）。"""
+    try:
+        state_file = DATA_DIR / "hook_state.json"
+        if state_file.exists():
+            return json.loads(state_file.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _summarize_dag_for_tool(dag: dict) -> dict:
+    """为 hook_status 压缩 DAG 摘要。"""
+    sessions = dag.get("sessions", {})
+    cwds = set()
+    branches = set()
+    for s in sessions.values():
+        if s.get("cwd"):
+            cwds.add(s["cwd"])
+        for b in s.get("git_branches", []):
+            branches.add(b)
+    return {
+        "tracked_sessions": len(sessions),
+        "working_directories": sorted(cwds),
+        "git_branches": sorted(branches),
+    }
+
+
+def _format_dag_for_tool(dag: dict) -> dict:
+    """为 get_dag_context 展开 DAG。"""
+    sessions = dag.get("sessions", {})
+    return {
+        "total_tracked_sessions": len(sessions),
+        "sessions": {k: v for k, v in list(sessions.items())[-20:]},
     }
 
 

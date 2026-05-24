@@ -1,6 +1,33 @@
 # Changelog
 
-## V4.0 — Agent 驱动知识工程 (完成 — 2026-05-23)
+## V4.3 — 代码审查修复（进行中）
+
+### 🔴 批次一：Bug 修复（必须修）
+- 🔴 guardrails._check_compile() 检查 `problem_count` 但 harness 传 `new_count` → compile 永远被阻止
+- 🔴 extractor.py 飞书归档 URL 是未插值的 f-string → 链接无效
+- 🔴 rule_maker.py 用 `p.get("project")` 但 `to_dict()` 返回 `"project_name"` → 项目过滤失效
+- 🔴 vector_search.py 两处 SQL 拼接 IN 子句 → 潜在注入风险
+- 🔴 services.py `usage_count +=10/-2` 语义扭曲 → RRF boost 被不当放大
+
+### 🟡 批次二：架构优化（应该改）
+- 🟡 `_plan()` 从 if-else 规则引擎升级为 LLM 推理决策（核心简历风险）
+- 🟡 DAG 上下文接入搜索 boost 或砍掉死功能
+- 🟡 飞书归档改为软标记（不截断原文，仅在展示层缩短）
+- 🟡 Hook 守护进程简化（PID/信号/控制文件 → 线程 + 内存 dict）
+- 🟡 mcp_server.py 拆分为 4 个功能模块（search/ingest/agent/admin）
+- 🟡 `_probe_llm()` 加 5 分钟缓存，避免每次调用重复探测
+- 🟡 `_graph_expand()` N+1 查询改为批量查询（12+ 次 DB 往返 → 5 次）
+
+### 🟢 批次三：代码质量（可选改）
+- 🟢 删除死代码 `reclassify_all()` / `generate_all_stars()`
+- 🟢 hook_capture.py 加 `sys.platform` 兼容
+- 🟢 硬编码阈值提取到 `config.py`
+- 🟢 数据库 session 管理提取上下文管理器
+- 🟢 新增端到端评测数据集
+
+---
+
+## V4.0 — Agent 驱动知识工程 (完成 — 2026-05-24)
 
 ### Phase 1: Agent 框架核心 ✅
 - 单 Agent Harness（observe → plan → evaluate → execute → remember）
@@ -29,10 +56,30 @@
 - `compile_tool` 新增 `push_to_feishu` 参数，编译后可自动推送至飞书文档
 - `state.py`：`feishu_cli_available` 动态检测（`lark-cli auth status`）
 - `harness.py`：growing_topic 命中且飞书可用时 auto `compile_push`
-- `guardrails.py`：`compile_push` 纳入 compile 约束规则
-- `.env.example`：`FEISHU_APP_ID`/`FEISHU_APP_SECRET` → lark-cli 安装引导
-- 新增 11 条单测（is_available / create_doc / update_doc）
 - 测试总数 40/40 通过
+
+### Phase 4.2: Hook 自动捕获 + DAG 上下文 ✅
+- 新增 `scripts/hook_capture.py`：后台轮询守护进程，检测会话冷却（30min 无写入）→ 自动触发摄入
+- Hook 状态持久化至 `data/hook_state.json`，供 Agent 和 MCP 读取
+- DAG 上下文采集：从会话 JSONL 提取 `cwd` / `gitBranch` 信息
+- `state.py` 输入层升级：`hook_active` 动态检测 + `dag_context` 摘要
+- `harness.py` 决策新增 P0 级：`hook_pending > 0` → `auto_ingest`
+- `tools.py` 新增 `auto_ingest_tool`
+- `session_ingestor.py` 新增 `ingest_single_session()` 供 Hook 调用
+- MCP 新增 4 个工具：`hook_status` / `start_hook` / `stop_hook` / `get_dag_context`（共 21 个 tools）
+
+### Phase 4.2 延伸：飞书归档压缩 + 溯源字段 ✅
+- `Problem` 表新增 `source_session_id` / `captured_at` / `feishu_archived` 字段
+- `compress_after_feishu_archive()`：推送飞书后自动压缩本地 storage（释放 ~50% 磁盘）
+- `compile_tool` auto 调用压缩；压缩后保留标题/标签/评分供搜索，完整内容在飞书
+- Hook 守护进程 MCP Server 初始化时自动启动，无需手动 `start_hook`
+- 新增 22 条单测（Hook 状态/冷却检测/DAG/输入层），测试总数 82/82 通过
+
+### Phase 4.3: 图谱遍历检索 ✅
+- `_graph_expand()`：RRF 融合后沿 Link 关系扩展（Problem → Topic → 兄弟 Problem）
+- 搜索结果新增 `graph_related` 字段，返回同主题相关经验
+- 遍历深度 1 跳，避免图爆炸
+- 新增 2 条图谱扩展单测
 
 ### 工程清理 ✅
 - `star_gen.py`：删除遗留的旧 `_get_llm()` 死代码和未使用的 import

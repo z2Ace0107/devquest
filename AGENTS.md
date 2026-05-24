@@ -13,13 +13,13 @@
 ### V4.0 计划（4 Phase）
 1. Phase 4.0: **Agent 框架 + 组织能力**（harness/state/tools/memory/guardrails + Topic/Concept/Link 模型）✅
 2. Phase 4.1: **飞书 CLI 输出**（feishu_cli.py + compile_tool 对接飞书文档）✅
-3. Phase 4.2: **采集升级**（Hook 自动捕获 + DAG 上下文）
-4. Phase 4.3: **检索升级 + 健康检查**（图谱遍历 + 本地 embedding）
+3. Phase 4.2: **采集升级**（Hook 自动捕获 + DAG 上下文）✅
+4. Phase 4.3: **检索升级 + 代码审查修复** — 详见 `plans/v4.3-optimization.md`
 
 ### Agent 架构
 - **单 Agent Harness**：observe → plan → evaluate → execute → remember
 - State 三层感知：知识层 + 输出层 + 输入层
-- Policy：Claude 推理优先级（不硬编码阈值）
+- Policy：规则调度器（⚠️ 当前为 if-else 规则引擎，V4.3 将升级为 LLM 推理决策）
 - Guardrails：6 条质量约束
 
 ### 已完成
@@ -29,6 +29,8 @@
 - ✅ V4.0 Phase 2: 数据模型升级（Topic/Concept/Link/AgentAction + organize 聚类 + compile topic_id + state Topic 感知 + memory 持久化，29 测试）
 - ✅ V4.0 Phase 3: LLM 客户端统一（`llm_client.py` 主备切换 + 5 文件去重重构）
 - ✅ V4.0 Phase 4.1: 飞书 CLI 输出（`feishu_cli.py` lark-cli 子进程封装 + compile_tool push_to_feishu + state 动态检测 + 11 测试）
+- ✅ V4.0 Phase 4.2: Hook 自动捕获 + DAG 上下文（`hook_capture.py` 后台守护进程 + auto_ingest 决策 + 4 新 MCP tools + 22 测试，80/80 通过）
+- 🔴 V4.3 代码审查修复：5 个 Bug + 7 个架构优化 + 5 个代码质量改进，详见 `plans/v4.3-optimization.md`
 
 每个 Phase 完成后 → 手动测试 → Git 提交 → 用户验证通过 → 下一步。
 
@@ -280,9 +282,21 @@ CLAUDE_SESSIONS_DIR=C:/Users/Y7000p/.claude/projects
 WATCH_PROJECTS=e--develop-claude
 ```
 
+## 已知 Bug（V4.3 待修）
+
+1. **🔴 guardrails._check_compile() 读取 `problem_count` 但 harness 传的是 `new_count`** → compile 永远被阻止
+2. **🔴 extractor.py 飞书归档 URL 是未插值的 f-string** → 链接显示为 `f'doc_id'` 而非有效 URL
+3. **🔴 rule_maker.py 用 `p.get("project")` 但 `Problem.to_dict()` 返回 `"project_name"`** → 项目过滤失效
+4. **🔴 vector_search.py 两处 SQL 拼接 `IN ({pids_str})`** → 潜在注入风险
+5. **🔴 services.py `usage_count +=10/-2` 语义扭曲** → 与字段名"使用次数"不符，RRF boost 被放大
+
 ## 已知限制
 
 1. FTS5 中文分词：需 Linux + ICU tokenizer 支持，当前 Windows 中文走 LIKE 兜底
 2. ChromaDB `where` 不支持 AND 组合：project 过滤和 tech 过滤不能同时走 DB 层
 3. Session 源路径硬编码 Windows 格式，跨平台需配置化
 4. MCP Server 依赖 MCP Client（Claude Code / Claude Desktop / Cursor 等），无独立 UI
+5. `_plan()` 是 6 条硬编码规则，而非声称的"Agent 不硬编码阈值"（V4.3 将升级为 LLM 推理）
+6. DAG 上下文（cwd/gitBranch）已采集但未被搜索或决策消费（V4.3 将接入搜索 boost 或砍掉）
+7. 飞书归档压缩不可逆——原始数据截断后无法恢复（V4.3 将改为软标记）
+8. `_probe_llm()` 每次 `get_llm()` 调用都执行探测，延迟翻倍（V4.3 将加缓存）

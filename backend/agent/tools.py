@@ -23,6 +23,39 @@ def observe_tool() -> dict:
 
 # ── capture ─────────────────────────────────────────────
 
+# ── auto_ingest ───────────────────────────────────────────
+
+def auto_ingest_tool() -> dict:
+    """Hook 触发：增量扫描会话目录，只摄入已冷却且未处理过的会话。"""
+    from pathlib import Path
+    import sys
+
+    scripts_dir = Path(__file__).resolve().parent.parent.parent / "scripts"
+    sys.path.insert(0, str(scripts_dir))
+    try:
+        from hook_capture import _scan_and_ingest, _read_hook_state, _write_hook_state
+        import os
+
+        sessions_dir = Path(os.getenv(
+            "CLAUDE_SESSIONS_DIR",
+            str(Path.home() / ".claude" / "projects"),
+        ))
+        project = os.getenv("WATCH_PROJECTS", "e--develop-claude")
+        sessions_dir = sessions_dir / project
+        cooldown = int(os.getenv("INGEST_COOLDOWN_MINUTES", "30"))
+
+        state = _read_hook_state()
+        state.setdefault("ingested_sessions", {})
+        result = _scan_and_ingest(sessions_dir, cooldown, state)
+        state["running"] = False  # 单次执行，不是守护进程
+        _write_hook_state(state)
+        return {"ok": True, "mode": "incremental", **result}
+    except Exception as e:
+        from backend import session_ingestor
+        result = session_ingestor.ingest_incremental()
+        return {"ok": True, "mode": "incremental_fallback", **result}
+
+
 def capture_tool(conversation_text: str, project: str = None) -> dict:
     """从对话文本提取经验入库。复用 save_problem 或将原始文本 LLM 提取。"""
     # 短文本直接当 error 录
@@ -227,9 +260,24 @@ def compile_tool(topic_id: int = None, topic_name: str = None, problem_ids: list
                 else:
                     doc_result = feishu_cli.create_doc(topic_name, content)
                 result["feishu_push"] = doc_result
-                if doc_result.get("doc_id") and topic:
-                    topic.feishu_doc_id = doc_result["doc_id"]
+
+                if doc_result.get("doc_id"):
+                    doc_id = doc_result["doc_id"]
+                    if topic:
+                        topic.feishu_doc_id = doc_id
                     db.commit()
+
+                    # 推送成功后压缩本地存储
+                    import os as _os
+                    feishu_domain = _os.getenv("FEISHU_DOMAIN", "bytedance.feishu.cn")
+                    feishu_url = f"https://{feishu_domain}/docx/{doc_id}"
+                    pids = [p.id for p in problems if not p.feishu_archived]
+                    if pids:
+                        from backend import extractor as _extractor
+                        archive_result = _extractor.compress_after_feishu_archive(
+                            pids, doc_id, feishu_url
+                        )
+                        result["local_archive"] = archive_result
             else:
                 result["feishu_push"] = {"error": "lark-cli 未配置，请先运行 lark-cli auth login"}
 

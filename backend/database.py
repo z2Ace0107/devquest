@@ -162,6 +162,26 @@ def init_db():
         except Exception:
             pass
         _migrate_v2_columns(conn)
+        # V4.2 溯源列
+        try:
+            conn.execute(text(
+                "ALTER TABLE problems ADD COLUMN source_session_id VARCHAR(255)"
+            ))
+        except Exception:
+            pass
+        try:
+            conn.execute(text(
+                "ALTER TABLE problems ADD COLUMN captured_at TIMESTAMP"
+            ))
+        except Exception:
+            pass
+        # V4.2 飞书归档标志
+        try:
+            conn.execute(text(
+                "ALTER TABLE problems ADD COLUMN feishu_archived INTEGER DEFAULT 0"
+            ))
+        except Exception:
+            pass
         # V4.0 新表
         _migrate_v4_tables(conn)
         conn.commit()

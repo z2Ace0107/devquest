@@ -257,10 +257,11 @@ def _ingest_session(filepath: Path) -> dict:
             logger.info("会话 %s 有效消息不足 (%d 条)，跳过", session_id, msg_count)
             return result
 
-        # 2. 调用提取器
+        # 2. 调用提取器（传递 session_id 用于溯源）
         problems = extractor.extract_problems(
             conversation_text=conversation_text,
             project_name=DEFAULT_PROJECT,
+            session_id=session_id,
         )
         result["problems"] = len(problems)
         logger.info("会话 %s 摄入完成: %d 条消息 → %d 个问题",
@@ -389,6 +390,19 @@ def ingest_incremental(
         cooldown_minutes=COOLDOWN_MINUTES,
         force=False,
     )
+
+
+def ingest_single_session(filepath: str) -> dict:
+    """
+    摄入单个会话文件。供 Hook 捕获引擎调用。
+
+    参数:
+        filepath: 会话 JSONL 文件绝对路径
+
+    返回:
+        dict: {"session_id": str, "problems": int, "message_count": int, "error": str|None}
+    """
+    return _ingest_session(Path(filepath))
 
 
 def get_ingest_status(project_name: Optional[str] = None) -> dict:

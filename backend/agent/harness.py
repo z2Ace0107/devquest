@@ -84,10 +84,24 @@ class HarnessAgent:
     def _plan(self, state: dict) -> dict | None:
         """基于当前状态决定下一步动作。
 
-        优先级: 组织(高价值) > 健康检查(维护) > 推送(有内容才推)
+        优先级: 自动摄入(P0) > 组织(高价值) > 编译(有内容) > 健康检查(维护) > 推送(有内容才推)
         """
         knowledge = state.get("knowledge", {})
         output = state.get("output", {})
+        input_state = state.get("input", {})
+
+        # P0: Hook 检测到待摄入会话 → 自动捕获
+        if input_state.get("hook_pending_sessions", 0) > 0 or \
+           (input_state.get("hook_active") and input_state.get("recent_captures", 0) == 0):
+            return {
+                "type": "auto_ingest",
+                "target": [],
+                "meta": {
+                    "hook_active": input_state.get("hook_active", False),
+                    "hook_pending_sessions": input_state.get("hook_pending_sessions", 0),
+                    "reason": "hook_detected_pending",
+                },
+            }
 
         # P1: 未关联 Topic 的孤立 Problem ≥3 → 组织
         if knowledge.get("needs_organize"):
@@ -157,6 +171,9 @@ class HarnessAgent:
         meta = action.get("meta", {})
         target = action.get("target", [])
 
+        if action_type == "auto_ingest":
+            return _tools.auto_ingest_tool()
+
         if action_type == "organize":
             return _tools.organize_tool(target if target else None)
 
@@ -196,6 +213,7 @@ def _summarize_state(state: dict) -> dict:
     """压缩状态为可读摘要。"""
     k = state.get("knowledge", {})
     o = state.get("output", {})
+    i = state.get("input", {})
     return {
         "total_problems": k.get("total_problems", 0),
         "weekly_new": k.get("weekly_new", 0),
@@ -207,4 +225,6 @@ def _summarize_state(state: dict) -> dict:
         "growing_topics_count": len(k.get("growing_topics", [])),
         "webhook_ready": o.get("webhook_ready", False),
         "feishu_cli_available": o.get("feishu_cli_available", False),
+        "hook_active": i.get("hook_active", False),
+        "hook_pending": i.get("hook_pending_sessions", 0),
     }

@@ -87,6 +87,16 @@ class Problem(Base):
     feedback_score = Column(Float, default=0.0, nullable=False, comment="有用率 0-1")
     feedback_count = Column(Integer, default=0, nullable=False, comment="反馈总次数")
     solution_version = Column(Integer, default=1, nullable=False, comment="解法迭代版本")
+    source_session_id = Column(String(255), nullable=True, comment="来源会话 ID（溯源）")
+    captured_at = Column(
+        TIMESTAMP,
+        nullable=True,
+        comment="会话捕获时间（与 created_at 区分：created_at 是记录创建时间）"
+    )
+    feishu_archived = Column(
+        Integer, default=0, nullable=False,
+        comment="已归档到飞书: 0=未归档, 1=已归档(本地已压缩)"
+    )
 
     # 正向关联：通过 problem.project 访问所属项目
     project = relationship("Project", back_populates="problems")
@@ -115,6 +125,9 @@ class Problem(Base):
             "feedback_score": self.feedback_score,
             "feedback_count": self.feedback_count,
             "solution_version": self.solution_version,
+            "source_session_id": self.source_session_id,
+            "captured_at": self.captured_at.isoformat() if self.captured_at else None,
+            "feishu_archived": bool(self.feishu_archived),
         }
 
 

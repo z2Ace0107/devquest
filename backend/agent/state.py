@@ -138,16 +138,56 @@ def _observe_output(db) -> dict:
 
 
 def _observe_input(db) -> dict:
-    """输入层状态：最近的采集活动。"""
+    """输入层状态：最近的采集活动 + Hook 状态 + DAG 上下文。"""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     hour_ago = now - timedelta(hours=1)
 
     recent = db.query(Problem).filter(Problem.created_at >= hour_ago).count()
 
+    hook_state = _read_hook_state()
+    dag = hook_state.get("dag_context", {})
+
     return {
         "recent_captures": recent,
-        "hook_active": False,  # V4.2 升级
+        "hook_active": hook_state.get("running", False),
+        "hook_pending_sessions": hook_state.get("pending_sessions", 0),
+        "hook_sessions_ingested": hook_state.get("sessions_ingested", 0),
+        "hook_last_scan_at": hook_state.get("last_scan_at"),
         "last_manual_save": None,
+        "dag_context": _summarize_dag(dag),
+    }
+
+
+def _read_hook_state() -> dict:
+    """读取 Hook 捕获引擎的状态文件。"""
+    from pathlib import Path as _Path
+    state_file = _Path(__file__).resolve().parent.parent.parent / "data" / "hook_state.json"
+    if state_file.exists():
+        try:
+            return json.loads(state_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {"running": False, "pending_sessions": 0, "sessions_ingested": 0, "dag_context": {}}
+
+
+def _summarize_dag(dag: dict) -> dict:
+    """压缩 DAG 上下文为摘要。"""
+    sessions = dag.get("sessions", {})
+    if not sessions:
+        return {"session_count": 0, "working_directories": [], "branches": []}
+
+    cwds = set()
+    branches = set()
+    for s in sessions.values():
+        if s.get("cwd"):
+            cwds.add(s["cwd"])
+        for b in s.get("git_branches", []):
+            branches.add(b)
+
+    return {
+        "session_count": len(sessions),
+        "working_directories": sorted(cwds),
+        "branches": sorted(branches),
     }
 
 
