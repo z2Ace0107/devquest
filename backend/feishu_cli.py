@@ -8,20 +8,44 @@
 
 import json
 import logging
+import shutil
 import subprocess
-import sys
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_LARK_CLI_CMD = "lark-cli"
+_LARK_CMD = None
+
+
+def _find_lark_cmd() -> list[str]:
+    """查找 lark-cli 命令，优先全局安装（lark-cli），fallback 到 npx。
+
+    Windows 下 .CMD 文件需用 shutil.which() 解析完整路径。
+    """
+    global _LARK_CMD
+    if _LARK_CMD is not None:
+        return _LARK_CMD
+
+    lark = shutil.which("lark-cli")
+    if lark:
+        _LARK_CMD = [lark]
+        return _LARK_CMD
+
+    npx = shutil.which("npx") or shutil.which("npx.cmd")
+    if npx:
+        _LARK_CMD = [npx, "@larksuite/cli@latest"]
+        return _LARK_CMD
+
+    _LARK_CMD = ["lark-cli"]  # 未安装时的占位，让 _run_lark 报清晰错误
+    return _LARK_CMD
 
 
 def _run_lark(args: list[str], input_text: str = "") -> dict:
     """运行 lark-cli 命令并解析 JSON 输出。"""
+    cmd = _find_lark_cmd() + args
     try:
         proc = subprocess.run(
-            [_LARK_CLI_CMD] + args,
+            cmd,
             input=input_text,
             capture_output=True,
             text=True,
@@ -51,6 +75,12 @@ def is_available() -> bool:
     """检查 lark-cli 是否已安装并认证。"""
     result = _run_lark(["auth", "status"])
     return "error" not in result
+
+
+def _reset_cmd():
+    """重置缓存的 lark-cli 命令路径（测试用）。"""
+    global _LARK_CMD
+    _LARK_CMD = None
 
 
 def create_doc(title: str, content_md: str) -> dict:
